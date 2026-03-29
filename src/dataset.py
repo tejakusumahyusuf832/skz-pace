@@ -1,9 +1,8 @@
 """Extracts and processes YouTube video metadata and comments.
 
 This script utilizes the YouTube Data API v3 to fetch video statistics,
-metadata, and top comments for a specified channel. It implements hidden
-playlist prefixes to automatically categorize videos by format and ensures
-state persistence to manage API quotas and network interruptions.
+metadata, top comments, and video transcripts for Stray Kids' Youtube channel.
+It ensures state persistence to manage API quotas and network interruptions.
 """
 
 import json
@@ -17,6 +16,7 @@ from loguru import logger
 import pandas as pd
 from tqdm import tqdm
 import typer
+from youtube_transcript_api import NoTranscriptFound, TranscriptsDisabled, YouTubeTranscriptApi
 
 from src.config import PROCESSED_DATA_DIR, RAW_DATA_DIR
 
@@ -122,19 +122,23 @@ def save_checkpoint(processed_ids: List[str]):
 def main(
     videos_output: Path = RAW_DATA_DIR / "skz_videos.parquet",
     comments_output: Path = RAW_DATA_DIR / "skz_comments.parquet",
+    transcripts_output: Path = RAW_DATA_DIR / "skz_transcripts.parquet",
     channel_id: str = "UC9rMiEjNaCSsebs31MRDCRA",
 ):
     """Execute the primary data extraction pipeline.
 
-    Orchestrates the fetching of video metadata, performance statistics, and
-    top comments. Utilizes checkpointing to allow resumption of the extraction
-    process across multiple runs. Processed data is appended to Parquet files.
+    Orchestrates the fetching of video metadata, performance statistics, top
+    comments, and video transcripts. Utilizes checkpointing to allow resumption
+    of the extraction process across multiple runs. Processed data is appended
+    to Parquet files.
 
     Args:
         videos_output (Path, optional): The destination file path for video metadata.
             Defaults to RAW_DATA_DIR / "skz_videos.parquet".
         comments_output (Path, optional): The destination file path for comments data.
             Defaults to RAW_DATA_DIR / "skz_comments.parquet".
+        transcript_output (Path, optional): The destination file path for transcript data.
+            Defaults to RAW_DATA_DIR / "skz_transcript.parquet".
         channel_id (str, optional): The target YouTube channel ID. Defaults to
             "UC9rMiEjNaCSsebs31MRDCRA".
     """
@@ -173,9 +177,11 @@ def main(
 
     video_data = []
     comment_data = []
+    transcript_data = []
 
     try:
         for video_id, video_format in tqdm(videos_to_process, desc="Processing Videos"):
+            # 1. Fetch Video Metadata & Stats
             vid_response = youtube.videos().list(part="snippet,statistics", id=video_id).execute()
 
             if not vid_response["items"]:
@@ -200,6 +206,7 @@ def main(
                 }
             )
 
+            # 2. Fetch Top Comments
             try:
                 comment_response = (
                     youtube.commentThreads()
@@ -238,6 +245,35 @@ def main(
                 else:
                     logger.error(f"Error fetching comments for {video_id}: {e}")
 
+            # 3. Fetch Transcripts (Only for Long-form and Live/VOD)
+            if video_format in ["Long-form", "Live/VOD"]:
+                try:
+                    # Instantiate the client
+                    ytt_api = YouTubeTranscriptApi()
+
+                    # Fetch the list of available transcripts for the video
+                    available_transcripts = ytt_api.list(video_id)
+
+                    # Find English first, fallback to Korean
+                    transcript = available_transcripts.find_transcript(["en", "ko"])
+
+                    # Fetch the actual transcript data chunks
+                    transcript_chunks = transcript.fetch()
+
+                    # Join the chunked dictionary elements into a single continuous text string
+                    full_transcript = " ".join([segment.text for segment in transcript_chunks])
+
+                    # Format: replace newlines inside the transcript with spaces
+                    full_transcript = full_transcript.replace("\n", " ")
+
+                except (TranscriptsDisabled, NoTranscriptFound):
+                    full_transcript = "na"
+                except Exception as e:
+                    logger.debug(f"Unexpected transcript error for {video_id}: {e}")
+                    full_transcript = "na"
+
+                transcript_data.append({"video_id": video_id, "transcript": full_transcript})
+
             processed_ids.append(video_id)
 
             if len(processed_ids) % 50 == 0:
@@ -272,6 +308,18 @@ def main(
                 df_new_comments = pd.concat([df_existing, df_new_comments], ignore_index=True)
             df_new_comments.to_parquet(comments_output, index=False)
             logger.info(f"Saved {len(comment_data)} new comment records to {comments_output}")
+
+        if transcript_data:
+            df_new_transcripts = pd.DataFrame(transcript_data)
+            if transcripts_output.exists():
+                df_existing = pd.read_parquet(transcripts_output)
+                df_new_transcripts = pd.concat(
+                    [df_existing, df_new_transcripts], ignore_index=True
+                )
+            df_new_transcripts.to_parquet(transcripts_output, index=False)
+            logger.info(
+                f"Saved {len(transcript_data)} new transcript records to {transcripts_output}"
+            )
 
 
 if __name__ == "__main__":
