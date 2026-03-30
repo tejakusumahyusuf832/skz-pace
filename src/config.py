@@ -30,3 +30,21 @@ try:
     logger.add(lambda msg: tqdm.write(msg, end=""), colorize=True)
 except ModuleNotFoundError:
     pass
+
+# --- Infrastructure Setup ---
+# Automatically create all required directories when config is imported.
+# This ensures version control quirks or fresh Docker/Colab environments
+# don't break the pipeline.
+_project_dirs = [
+    DATA_DIR,
+    RAW_DATA_DIR,
+    INTERIM_DATA_DIR,
+    PROCESSED_DATA_DIR,
+    EXTERNAL_DATA_DIR,
+    MODELS_DIR,
+    REPORTS_DIR,
+    FIGURES_DIR,
+]
+
+for d in _project_dirs:
+    d.mkdir(parents=True, exist_ok=True)

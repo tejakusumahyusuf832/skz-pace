@@ -1,13 +1,16 @@
-"""Extracts and processes YouTube video metadata and comments.
+"""Extract and process YouTube video metadata and comments.
 
-This script utilizes the YouTube Data API v3 to fetch video statistics,
-metadata, top comments, and video transcripts for Stray Kids' Youtube channel.
-It ensures state persistence to manage API quotas and network interruptions.
+Utilize the YouTube Data API v3 to fetch video statistics, metadata,
+top comments, and video transcripts for a specified YouTube channel.
+Ensure state persistence to manage API quotas and network interruptions.
 """
 
+from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import random
+import time
 from typing import List
 
 from googleapiclient.discovery import build
@@ -18,7 +21,7 @@ from tqdm import tqdm
 import typer
 from youtube_transcript_api import NoTranscriptFound, TranscriptsDisabled, YouTubeTranscriptApi
 
-from src.config import PROCESSED_DATA_DIR, RAW_DATA_DIR
+from src.config import RAW_DATA_DIR
 
 CHECKPOINT_FILE = RAW_DATA_DIR / "extraction_checkpoint.json"
 
@@ -28,7 +31,7 @@ app = typer.Typer()
 def get_youtube_client():
     """Initialize and return the YouTube Data API client.
 
-    Requires the 'YOUTUBE_API_KEY' environment variable to be set prior
+    Require the 'YOUTUBE_API_KEY' environment variable to be set prior
     to execution.
 
     Returns:
@@ -99,7 +102,7 @@ def load_checkpoint() -> List[str]:
     """Load the list of previously processed video IDs from disk.
 
     Returns:
-        List[str]: A list of video IDs. Returns an empty list if the checkpoint
+        List[str]: A list of video IDs, or an empty list if the checkpoint
             file does not exist.
     """
     if CHECKPOINT_FILE.exists():
@@ -120,39 +123,33 @@ def save_checkpoint(processed_ids: List[str]):
 
 @app.command()
 def main(
-    videos_output: Path = RAW_DATA_DIR / "skz_videos.parquet",
+    metadata_output: Path = RAW_DATA_DIR / "skz_metadata.parquet",
+    stats_output: Path = RAW_DATA_DIR / "skz_stats.parquet",
     comments_output: Path = RAW_DATA_DIR / "skz_comments.parquet",
     transcripts_output: Path = RAW_DATA_DIR / "skz_transcripts.parquet",
     channel_id: str = "UC9rMiEjNaCSsebs31MRDCRA",
+    update_static: bool = typer.Option(
+        False,
+        "--update-static",
+        help="Force update of static metadata and transcripts for all videos.",
+    ),
 ):
     """Execute the primary data extraction pipeline.
 
-    Orchestrates the fetching of video metadata, performance statistics, top
-    comments, and video transcripts. Utilizes checkpointing to allow resumption
-    of the extraction process across multiple runs. Processed data is appended
-    to Parquet files.
-
     Args:
-        videos_output (Path, optional): The destination file path for video metadata.
-            Defaults to RAW_DATA_DIR / "skz_videos.parquet".
-        comments_output (Path, optional): The destination file path for comments data.
-            Defaults to RAW_DATA_DIR / "skz_comments.parquet".
-        transcript_output (Path, optional): The destination file path for transcript data.
-            Defaults to RAW_DATA_DIR / "skz_transcript.parquet".
-        channel_id (str, optional): The target YouTube channel ID. Defaults to
-            "UC9rMiEjNaCSsebs31MRDCRA".
+        metadata_output (Path, optional): Filepath for static video metadata.
+        stats_output (Path, optional): Filepath for dynamic video statistics.
+        comments_output (Path, optional): Filepath for top-level comments.
+        transcripts_output (Path, optional): Filepath for video transcripts.
+        channel_id (str, optional): The target YouTube channel ID.
+        update_static (bool, optional): Force update of static data for all videos.
     """
-    RAW_DATA_DIR.mkdir(parents=True, exist_ok=True)
-    PROCESSED_DATA_DIR.mkdir(parents=True, exist_ok=True)
 
     try:
         youtube = get_youtube_client()
     except ValueError:
         return
 
-    # Construct hidden playlist IDs by replacing the standard 'UC' prefix.
-    # This exposes natively segregated formats (Long-form, Shorts, Live) without
-    # requiring an extra API call per video to determine its format type.
     base_id = channel_id.replace("UC", "")
     playlists_to_process = {
         "Long-form": f"UULF{base_id}",
@@ -161,165 +158,168 @@ def main(
     }
 
     processed_ids = load_checkpoint()
-    videos_to_process = []
+    all_current_videos = []
 
     for video_format, playlist_id in playlists_to_process.items():
         logger.info(f"Fetching IDs for {video_format} from {playlist_id}...")
         try:
             video_ids = get_all_video_ids(youtube, playlist_id)
             for vid in video_ids:
-                if vid not in processed_ids:
-                    videos_to_process.append((vid, video_format))
+                all_current_videos.append({"id": vid, "format": video_format})
         except HttpError as e:
             logger.warning(f"Could not fetch playlist {playlist_id}. Error: {e}")
 
-    logger.info(f"Starting extraction for {len(videos_to_process)} unprocessed videos...")
+    logger.info(f"Total videos on channel: {len(all_current_videos)}")
 
-    video_data = []
+    metadata_records = []
+    stats_records = []
     comment_data = []
     transcript_data = []
 
+    scraped_at = datetime.now(timezone.utc).isoformat()
+
     try:
-        for video_id, video_format in tqdm(videos_to_process, desc="Processing Videos"):
-            # 1. Fetch Video Metadata & Stats
-            vid_response = youtube.videos().list(part="snippet,statistics", id=video_id).execute()
+        chunk_size = 50
+        for i in tqdm(
+            range(0, len(all_current_videos), chunk_size), desc="Processing Videos (Batched)"
+        ):
+            batch = all_current_videos[i : i + chunk_size]
+            batch_ids = [v["id"] for v in batch]
+            batch_formats = {v["id"]: v["format"] for v in batch}
 
-            if not vid_response["items"]:
-                continue
-
-            vid_info = vid_response["items"][0]
-            snippet = vid_info["snippet"]
-            stats = vid_info.get("statistics", {})
-
-            video_data.append(
-                {
-                    "video_id": video_id,
-                    "published_at": snippet["publishedAt"],
-                    "video_format": video_format,
-                    "title": snippet["title"],
-                    "description": snippet["description"],
-                    "category_id": snippet["categoryId"],
-                    "tags": ",".join(snippet.get("tags", [])),
-                    "view_count": int(stats.get("viewCount", 0)),
-                    "like_count": int(stats.get("likeCount", 0)),
-                    "comment_count": int(stats.get("commentCount", 0)),
-                }
+            # Group video IDs to minimize API calls and stay within quota constraints
+            vid_response = (
+                youtube.videos().list(part="snippet,statistics", id=",".join(batch_ids)).execute()
             )
 
-            # 2. Fetch Top Comments
-            try:
-                comment_response = (
-                    youtube.commentThreads()
-                    .list(
-                        part="snippet",
-                        videoId=video_id,
-                        maxResults=50,
-                        order="relevance",
-                        textFormat="plainText",
-                    )
-                    .execute()
+            for vid_info in vid_response.get("items", []):
+                video_id = vid_info["id"]
+                snippet = vid_info["snippet"]
+                stats = vid_info.get("statistics", {})
+                is_new_video = video_id not in processed_ids
+
+                # Always append dynamic statistics to build a time-series history
+                stats_records.append(
+                    {
+                        "video_id": video_id,
+                        "scraped_at": scraped_at,
+                        "view_count": int(stats.get("viewCount", 0)),
+                        "like_count": int(stats.get("likeCount", 0)),
+                        "comment_count": int(stats.get("commentCount", 0)),
+                    }
                 )
 
-                for item in comment_response.get("items", []):
-                    top_comment = item["snippet"]["topLevelComment"]["snippet"]
-                    comment_data.append(
+                # Fetch static data only for new videos to conserve API quota, unless forced
+                if is_new_video or update_static:
+                    metadata_records.append(
                         {
                             "video_id": video_id,
-                            "comment_id": item["id"],
-                            "author": top_comment["authorDisplayName"],
-                            "text": top_comment["textDisplay"],
-                            "like_count": int(top_comment["likeCount"]),
-                            "published_at": top_comment["publishedAt"],
+                            "published_at": snippet["publishedAt"],
+                            "video_format": batch_formats[video_id],
+                            "title": snippet["title"],
+                            "description": snippet["description"],
+                            "category_id": snippet["categoryId"],
+                            "tags": ",".join(snippet.get("tags", [])),
                         }
                     )
-            except HttpError as e:
-                if e.resp.status == 403 and "quotaExceeded" in str(e):
-                    logger.warning(
-                        "YouTube API Quota Exceeded during comment extraction. Saving state and halting."
-                    )
-                    # Re-raise the exception strictly to jump to the finally block
-                    # ensuring safe persistence of current in-memory datasets before process termination.
-                    raise e
-                elif e.resp.status == 403:
-                    logger.debug(f"Comments disabled for video {video_id}.")
-                else:
-                    logger.error(f"Error fetching comments for {video_id}: {e}")
 
-            # 3. Fetch Transcripts (Only for Long-form and Live/VOD)
-            if video_format in ["Long-form", "Live/VOD"]:
+                    # Transcripts are computationally heavy; restrict to formats likely to contain them
+                    if batch_formats[video_id] in ["Long-form", "Live/VOD"]:
+                        try:
+                            time.sleep(random.uniform(1.2, 3.0))
+
+                            ytt_api = YouTubeTranscriptApi()
+                            transcript = ytt_api.list(video_id).find_transcript(["en", "ko"])
+                            full_transcript = " ".join(
+                                [seg.text for seg in transcript.fetch()]
+                            ).replace("\n", " ")
+                        except NoTranscriptFound:
+                            logger.debug(f"No EN/KO transcript found for {video_id}.")
+                            full_transcript = "na"
+                        except TranscriptsDisabled:
+                            logger.debug(f"Transcripts completely disabled for {video_id}.")
+                            full_transcript = "na"
+                        except Exception as e:
+                            logger.warning(
+                                f"Unexpected transcript error for {video_id}: {type(e).__name__} - {e}"
+                            )
+                            full_transcript = "na"
+
+                        transcript_data.append(
+                            {"video_id": video_id, "transcript": full_transcript}
+                        )
+
+                # Always append comments to capture shifts in top relevance rankings over time
                 try:
-                    # Instantiate the client
-                    ytt_api = YouTubeTranscriptApi()
+                    comment_response = (
+                        youtube.commentThreads()
+                        .list(
+                            part="snippet",
+                            videoId=video_id,
+                            maxResults=50,
+                            order="relevance",
+                            textFormat="plainText",
+                        )
+                        .execute()
+                    )
 
-                    # Fetch the list of available transcripts for the video
-                    available_transcripts = ytt_api.list(video_id)
+                    for item in comment_response.get("items", []):
+                        top_comment = item["snippet"]["topLevelComment"]["snippet"]
+                        comment_data.append(
+                            {
+                                "video_id": video_id,
+                                "comment_id": item["id"],
+                                "author": top_comment["authorDisplayName"],
+                                "text": top_comment["textDisplay"],
+                                "like_count": int(top_comment["likeCount"]),
+                                "published_at": top_comment["publishedAt"],
+                                "scraped_at": scraped_at,  # Track timestamp to record when this specific ranking was observed
+                            }
+                        )
+                except HttpError as e:
+                    if e.resp.status == 403 and "quotaExceeded" in str(e):
+                        logger.warning("Quota Exceeded on comments. Saving state and halting.")
+                        raise e
+                    elif e.resp.status == 403:
+                        logger.debug(f"Comments disabled for video {video_id}.")
+                    else:
+                        logger.error(f"Error fetching comments for {video_id}: {e}")
 
-                    # Find English first, fallback to Korean
-                    transcript = available_transcripts.find_transcript(["en", "ko"])
+                if is_new_video:
+                    processed_ids.append(video_id)
 
-                    # Fetch the actual transcript data chunks
-                    transcript_chunks = transcript.fetch()
+            save_checkpoint(processed_ids)
 
-                    # Join the chunked dictionary elements into a single continuous text string
-                    full_transcript = " ".join([segment.text for segment in transcript_chunks])
-
-                    # Format: replace newlines inside the transcript with spaces
-                    full_transcript = full_transcript.replace("\n", " ")
-
-                except (TranscriptsDisabled, NoTranscriptFound):
-                    full_transcript = "na"
-                except Exception as e:
-                    logger.debug(f"Unexpected transcript error for {video_id}: {e}")
-                    full_transcript = "na"
-
-                transcript_data.append({"video_id": video_id, "transcript": full_transcript})
-
-            processed_ids.append(video_id)
-
-            if len(processed_ids) % 50 == 0:
-                save_checkpoint(processed_ids)
-
-        logger.success("Extraction completed successfully without hitting quota limits.")
-
-    except HttpError as e:
-        logger.warning(
-            f"API Error encountered ({e.resp.status}). Halting extraction. Progress saved."
-        )
-        logger.debug(f"Detailed error reason: {e.reason}")
+        logger.success("Extraction completed successfully.")
 
     except Exception as e:
-        logger.error(f"Unexpected error: {e}")
+        logger.error(f"Extraction halted: {e}")
 
     finally:
         save_checkpoint(processed_ids)
 
-        if video_data:
-            df_new_videos = pd.DataFrame(video_data)
-            if videos_output.exists():
-                df_existing = pd.read_parquet(videos_output)
-                df_new_videos = pd.concat([df_existing, df_new_videos], ignore_index=True)
-            df_new_videos.to_parquet(videos_output, index=False)
-            logger.info(f"Saved {len(video_data)} new video records to {videos_output}")
+        def append_to_parquet(data_list: List[dict], filepath: Path):
+            """Append a list of dictionaries to a Parquet file safely.
 
-        if comment_data:
-            df_new_comments = pd.DataFrame(comment_data)
-            if comments_output.exists():
-                df_existing = pd.read_parquet(comments_output)
-                df_new_comments = pd.concat([df_existing, df_new_comments], ignore_index=True)
-            df_new_comments.to_parquet(comments_output, index=False)
-            logger.info(f"Saved {len(comment_data)} new comment records to {comments_output}")
+            Create a new Parquet file if one does not exist, otherwise concatenate
+            the new data with the existing dataset.
 
-        if transcript_data:
-            df_new_transcripts = pd.DataFrame(transcript_data)
-            if transcripts_output.exists():
-                df_existing = pd.read_parquet(transcripts_output)
-                df_new_transcripts = pd.concat(
-                    [df_existing, df_new_transcripts], ignore_index=True
-                )
-            df_new_transcripts.to_parquet(transcripts_output, index=False)
-            logger.info(
-                f"Saved {len(transcript_data)} new transcript records to {transcripts_output}"
-            )
+            Args:
+                data_list (List[dict]): The dataset to append.
+                filepath (Path): The destination Parquet file path.
+            """
+            if data_list:
+                df_new = pd.DataFrame(data_list)
+                if filepath.exists():
+                    df_existing = pd.read_parquet(filepath)
+                    df_new = pd.concat([df_existing, df_new], ignore_index=True)
+                df_new.to_parquet(filepath, index=False)
+                logger.info(f"Appended {len(data_list)} records to {filepath}")
+
+        append_to_parquet(stats_records, stats_output)
+        append_to_parquet(metadata_records, metadata_output)
+        append_to_parquet(comment_data, comments_output)
+        append_to_parquet(transcript_data, transcripts_output)
 
 
 if __name__ == "__main__":
