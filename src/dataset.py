@@ -220,13 +220,14 @@ def main(
                             "description": snippet["description"],
                             "category_id": snippet["categoryId"],
                             "tags": ",".join(snippet.get("tags", [])),
+                            "scraped_at": scraped_at,
                         }
                     )
 
                     # Transcripts are computationally heavy; restrict to formats likely to contain them
                     if batch_formats[video_id] in ["Long-form", "Live/VOD"]:
                         try:
-                            time.sleep(random.uniform(1.2, 3.0))
+                            time.sleep(random.uniform(2.2, 3.3))
 
                             ytt_api = YouTubeTranscriptApi()
                             transcript = ytt_api.list(video_id).find_transcript(["en", "ko"])
