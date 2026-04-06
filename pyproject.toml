@@ -22,6 +22,7 @@ dependencies = [
     "mkdocs",
     "pandas>=3.0.1",
     "pip",
+    "polars-lts-cpu>=1.33.1",
     "pyarrow>=23.0.1",
     "python-dotenv",
     "ruff",

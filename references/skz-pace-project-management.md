@@ -1,0 +1,97 @@
+# Project Management: SKZ PACE: Predictive Analytics & Content Ecosystem
+
+*The business case below is a real project brief modeled from JYP Entertainment fregarding Stray Kids' YouTube channel. This document serves as **Phase 0 (Problem Definition & Scoping)** of the full-stack data science workflow. The implementation plan outlines the architecture, completely free tool stack, and the phased execution across the four core data science roles.*
+
+* **Client**: JYP Entertainment (Stray Kids' management company)  
+* **Project Manager**: Yusuf Tejakusumah (Full-Stack Data Scientist)
+
+## Table of Contents
+* [Business Case](#business-case)
+    * [The Client Discovery (the 5 Core Questions)](#the-client-discovery-the-5-core-questions)
+    * [Problem Definition & Scoping](#problem-definition--scoping)
+* [Implementation Plan](#implementation-plan)
+    * [Project Requirements](#project-requirements)
+    * [Project Roadmap](#project-roadmap)
+
+
+
+## Business Case
+
+As the Head of Digital Strategy overseeing artist content ecosystems, I’ve been eager to get a data scientist of your caliber on board.
+
+Stray Kids has built a phenomenal digital footprint—nearly 10 billion views and over 23 million subscribers. But our current analytics approach is too superficial. We are generating a massive amount of varied content, from high-budget "Unveil" teasers to highly intimate "2 Kids Room" episodes and chaotic "SKZ CODE" reality shows. I need a comprehensive, phased data project that starts with deep exploratory data analysis and scales into a robust machine learning system.
+
+To ensure we are fully aligned with your preferred project management style, I have structured my brief by answering the **5 Core Questions** you need for discovery, followed by **Problem Definition & Scoping** information.
+
+---
+
+### The Client Discovery (the 5 Core Questions)
+
+**1. What problem are you trying to solve?**
+
+We have a massive, highly engaged international fanbase ("STAY"), but we lack granular, data-driven insights into *which specific content pillars* drive the most valuable engagement. We don't know exactly how our non-music content (vlogs, reality, solo showcases) influences overall channel growth, viewer retention, and audience sentiment compared to our official music/teaser releases. We are currently guessing our content mix and upload scheduling.
+
+**2. Why is this important to our business right now?**
+
+The K-pop industry is fiercely competitive. Producing shows like "SKZ CODE" or high-end teasers requires significant time, budget, and member energy. We need to maximize the ROI of our production efforts. If we can understand the exact emotional resonance and engagement weight of different video categories, we can optimize our content strategy to keep the fandom highly engaged between album releases, directly driving merchandise and tour sales.
+
+**3. What’s your dream outcome?**
+
+Initially, I want an advanced analytical dashboard that segments the 1,988+ videos into their specific series/types and maps out engagement quality (not just view counts, but comment-to-view ratios, sentiment analysis of comments, and language distribution).
+*The ML Expansion:* Eventually, a predictive machine learning model where our production team can input a proposed video concept (category, duration, tags, upload time) and forecast its expected engagement rate.
+
+**4. What have you tried so far?**
+
+We have been relying solely on the native YouTube Studio dashboard. It gives us basic historical metrics (watch time, raw views, click-through rates), but it completely fails at semantic analysis. It cannot read the millions of comments to tell us *how* the fans feel, nor does it allow us to effectively cluster our unique show formats to compare their long-term performance lifecycles.
+
+**5. Why you?**
+
+You have the technical rigor of a full-stack data scientist combined with an understanding of complex digital ecosystems. We need someone who can manage this end-to-end: from extracting the raw data to deploying a tool our producers can actually use.
+
+---
+
+### Problem Definition & Scoping
+
+#### Problem Diagnosis
+
+* **Business Context:** Stray Kids' YouTube channel features a highly diverse content ecosystem (Music Teasers, SKZ-PLAYER/RECORD, SKZ CODE, SKZ-TALKER, 2 Kids Room).
+* **The Issue:** Native analytics cannot measure the semantic value or categorize the distinct engagement lifecycles of these different content pillars, leading to inefficiencies in production budgeting and upload scheduling.
+
+#### Solution Design
+
+* **Phase A (The Data Analysis Foundation):** An ETL pipeline extracting YouTube metadata and comments. We will use a free, state-of-the-art multilingual transformer (`twitter-xlm-roberta-base-sentiment`) to extract sentiment scores across fan languages.
+* **Phase B (ML Expansion):** A predictive A/B Scenario Simulator. We will use open-source semantic embedding models (`EmbeddingGemma` or `Qwen3-Embedding`) to convert text into vectors. We will normalize the target variable via Time-Decay Weighting to prevent older videos from skewing predictions. 
+* **POC Value:** Validating assumptions about what fans want before overhauling the 2026/2027 production calendar.
+
+## Implementation Plan
+
+### Project Requirements
+
+* **Roles Required:** Project Manager, Data Engineer, Data Analyst, Data Scientist, and Machine Learning Engineer. *Note: A full-stack data scientist will be owning these hats sequentially.*
+* **Data Source:** YouTube Data API v3 (Free tier quota).
+* **Infrastructure:** 
+    * **Development (Dev):** Local development environment (VS Code, uv), Local PostgreSQL, and pgAdmin.
+    * **Production (Prod):** Google Colab (Free GPU tier) for model training, Neon for serverless cloud database hosting, and Hugging Face Spaces for free web hosting.
+* **Technologies:**
+    | Category | Tools |
+    |----------|-------|
+    | Language | Python, SQL |
+    | Data Acquisition | `google-api-python-client`, `youtube-transcript-api` |
+    | Data Prep & Analysis | Pandas/Polars/Spark, HuggingFace transformers (`cardiffnlp/twitter-xlm-roberta-base-sentiment`) |
+    | Database | Parquet/CSV files (for initial storage in Google Drive), Local PostgreSQL + pgAdmin, Neon Serverless PostgreSQL (Prod), or BigQuery (for dashboard querying) |
+    | Pipeline Automation | GitHub Actions (Cron jobs for daily data updates) |
+    | ML & NLP | Scikit-learn, XGBoost, sentence-transformers (`EmbeddingGemma or Qwen3-Embedding`) |
+    | API | FastAPI |
+    | Visualization/UI | Plotly/Seaborn/Matplotlib, Power BI and Streamlit (for the interactive dashboard) |
+    | Deployment | Docker, Hugging Face Spaces (Free Tier), GitHub |
+
+### Project Roadmap
+
+| Phase | Workflow Stage | Key Tasks | Primary Hat | Due Date |
+| --- | --- | --- | --- | --- |
+| **1** | **Data Engineering** | Build an ELT pipeline using the YouTube API, transform in-memory, and load to the database. Test the ETL code safely against a local PostgreSQL database (Dev). Once validated, deploy to GitHub Actions to automate weekly updates directly to Neon (Prod). | Data Engineer | Week 1-3 |
+| **2** | **Solution Development** | Perform EDA on engagement metrics. Run sentiment analysis and language detection on comments. Train embedding models on video metadata and develop the regression simulator with Time-Decay normalization. | Data Analyst & Data Scientist | Week 4-5 |
+| **3** | **Solution Deployment** | Wrap the ML model in a FastAPI endpoint. Build an interactive Streamlit dashboard for stakeholders. Containerize the application using Docker and deploy it to Hugging Face Spaces for free, public access. | ML Engineer & Data Scientist | Week 6-7 |
+| **4** | **Evaluation & Docs** | Assess model performance against business metrics. Finalize GitHub repository documentation (README, architecture diagram). Conduct project retrospective. | Project Manager | Week 8+ |
+
+---
