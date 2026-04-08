@@ -193,5 +193,7 @@ cython_debug/
 # VS Code
 .vscode
 
-# References
+# Personal Files/Notes
 full-stack-data-science-notes/
+cleanup.ipynb
+cleanup.sql

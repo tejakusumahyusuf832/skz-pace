@@ -137,6 +137,22 @@ def append_to_parquet(data_list: List[dict], filepath: Path):
         logger.info(f"Appended {len(data_list)} records to {filepath}")
 
 
+def append_to_db(data_list: List[dict], table_name: str, db_uri: str):
+    """Append a list of dictionaries directly to a PostgreSQL table."""
+    if data_list:
+        df_new = pl.DataFrame(data_list)
+        try:
+            df_new.write_database(
+                table_name=table_name,
+                connection=db_uri,
+                if_table_exists="append",
+                engine="sqlalchemy",
+            )
+            logger.info(f"Appended {len(data_list)} records to DB table '{table_name}'")
+        except Exception as e:
+            logger.error(f"Database append failed for {table_name}: {e}")
+
+
 def fetch_video_metadata(
     youtube,
     batch_ids: List[str],
@@ -266,15 +282,15 @@ def fetch_top_comments(youtube, video_id: str, scraped_at: str) -> List[dict]:
     return comment_data
 
 
-def fetch_video_transcript(video_id: str) -> str:
+def fetch_video_transcript(video_id: str) -> str | None:
     """Fetch the English or Korean transcript for a specific video.
 
     Args:
         video_id (str): The specific video ID to query.
 
     Returns:
-        str: The concatenated full transcript text, or a standardized error
-            string if unavailable.
+        str: The concatenated full transcript text, or a flag to skip appending.
+        NAN: The transcript is unavailable.
     """
     try:
         # Introduce jitter to mitigate temporary rate-limiting or IP blocking
@@ -286,13 +302,13 @@ def fetch_video_transcript(video_id: str) -> str:
         return full_transcript
     except NoTranscriptFound:
         logger.debug(f"No EN/KO transcript found for {video_id}.")
-        return "na - No transcript found"
+        return None
     except TranscriptsDisabled:
         logger.debug(f"Transcripts completely disabled for {video_id}.")
-        return "na - Transcript disabled"
+        return None
     except Exception as e:
         logger.warning(f"Unexpected transcript error for {video_id}: {type(e).__name__} - {e}")
-        return "na - Failed to fetch transcript"
+        return "FAILED_FETCH"  # Flag to skip appending
 
 
 @app.command()
@@ -312,6 +328,11 @@ def main(
         "--fetch-transcripts",
         help="Only fetch missing transcripts using already extracted video IDs.",
     ),
+    at_local_db: bool = typer.Option(
+        False,
+        "--at-local-db",
+        help="Route operations through the local PostgreSQL database instead of Parquet files.",
+    ),
 ):
     """Execute the primary data extraction pipeline.
 
@@ -324,32 +345,74 @@ def main(
         update_snippets (bool, optional): Flag to overwrite snippets of previously processed videos.
         fetch_transcripts (bool, optional): Flag to run the pipeline strictly for fetching missing transcripts.
     """
-    processed_ids = load_checkpoint()
     scraped_at = datetime.now(timezone.utc).isoformat()
+    db_uri = ""
+
+    if at_local_db:
+        logger.info("Database mode engaged. Pulling state from PostgreSQL...")
+        db_uri = os.environ.get("DATABASE_URL")
+        if not db_uri:
+            logger.error("DATABASE_URL not found in .env. Halting.")
+            return
+
+        try:
+            df_proc = pl.read_database_uri(
+                "SELECT video_id FROM skz_snippets", uri=db_uri, engine="connectorx"
+            )
+            processed_ids = df_proc["video_id"].to_list() if not df_proc.is_empty() else []
+        except Exception as e:
+            logger.warning(
+                f"Could not read from DB. Proceeding with empty processed_ids. Error: {e}"
+            )
+            processed_ids = []
+    else:
+        logger.info("Local mode engaged. Pulling state from JSON checkpoint...")
+        processed_ids = load_checkpoint()
 
     if fetch_transcripts:
         logger.info("Running in transcript-only mode...")
         already_fetched = set()
-
-        if transcripts_output.exists():
-            df_existing = pl.read_parquet(transcripts_output)
-            if "video_id" in df_existing.columns:
-                already_fetched = set(df_existing["video_id"].unique().to_list())
-
         valid_ids = set(processed_ids)
-        if snippet_output.exists():
-            df_snippets = pl.read_parquet(snippet_output)
-            if "video_id" in df_snippets.columns and "video_format" in df_snippets.columns:
-                valid_df = df_snippets.filter(
-                    pl.col("video_format").is_in(["Long-form", "Live/VOD"])
+
+        if at_local_db:
+            try:
+                # DB Context
+                df_fetched = pl.read_database_uri(
+                    "SELECT video_id FROM skz_transcripts", uri=db_uri, engine="connectorx"
                 )
-                valid_ids = set(valid_df["video_id"].unique().to_list())
+                already_fetched = (
+                    set(df_fetched["video_id"].to_list()) if not df_fetched.is_empty() else set()
+                )
+
+                df_valid = pl.read_database_uri(
+                    "SELECT video_id FROM skz_snippets WHERE video_format IN ('Long-form', 'Live/VOD')",
+                    uri=db_uri,
+                    engine="connectorx",
+                )
+                valid_ids = (
+                    set(df_valid["video_id"].to_list()) if not df_valid.is_empty() else set()
+                )
+            except Exception as e:
+                logger.error(f"DB Read Error during transcript init: {e}")
+                return
+        else:
+            # Parquet Context
+            if transcripts_output.exists():
+                df_existing = pl.read_parquet(transcripts_output)
+                if "video_id" in df_existing.columns:
+                    already_fetched = set(df_existing["video_id"].unique().to_list())
+
+            if snippet_output.exists():
+                df_snippets = pl.read_parquet(snippet_output)
+                if "video_id" in df_snippets.columns and "video_format" in df_snippets.columns:
+                    valid_df = df_snippets.filter(
+                        pl.col("video_format").is_in(["Long-form", "Live/VOD"])
+                    )
+                    valid_ids = set(valid_df["video_id"].unique().to_list())
 
         missing_transcripts = [
             vid for vid in processed_ids if vid not in already_fetched and vid in valid_ids
         ]
-
-        # Enforce max limit per run to prevent triggering anti-scraping blocks from the transcript module.
         ids_to_fetch = missing_transcripts[:40]
 
         if not ids_to_fetch:
@@ -363,11 +426,16 @@ def main(
 
         for vid in tqdm(ids_to_fetch, desc="Fetching Transcripts"):
             text = fetch_video_transcript(vid)
-            transcript_data.append({"video_id": vid, "transcript": text})
+            if text != "FAILED_FETCH":
+                transcript_data.append({"video_id": vid, "transcript": text})
 
-        append_to_parquet(transcript_data, transcripts_output)
+        if at_local_db:
+            append_to_db(transcript_data, "skz_transcripts", db_uri)
+        else:
+            append_to_parquet(transcript_data, transcripts_output)
+
         logger.success(f"Successfully fetched and appended {len(transcript_data)} transcripts.")
-        return
+        return  # To prevent from fetching the other data
 
     try:
         youtube = get_youtube_client()
