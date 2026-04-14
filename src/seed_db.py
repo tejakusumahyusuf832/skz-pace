@@ -32,7 +32,7 @@ def migrate_parquet_to_sql():
 
             # Write directly to PostgreSQL.
             # 'if_table_exists="replace"' drops the table
-            # if it's already there, so you can safely rerun this script if needed.
+            # if it's already there, you can safely rerun this script if needed.
             df.write_database(
                 table_name=table_name,
                 connection=DB_URI,

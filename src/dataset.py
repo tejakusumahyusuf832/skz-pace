@@ -1,8 +1,8 @@
-"""Extract and process YouTube video snippets, stats, comments, & transcripts.
+"""Execute YouTube data extraction pipelines.
 
-Utilize the YouTube Data API v3 to fetch video snippets, statistics, top
-comments, and transcripts for a specified channel. Manage state persistence
-to handle API quotas and network interruptions.
+This module provides functions to fetch, process, and store YouTube channel data,
+including video metadata, statistics, top-level comments, and transcripts. It
+supports outputting data to local Parquet files or directly to a PostgreSQL database.
 """
 
 from datetime import datetime, timezone
@@ -32,7 +32,7 @@ def get_youtube_client():
     """Initialize and return the YouTube Data API client.
 
     Returns:
-        googleapiclient.discovery.Resource: The authenticated YouTube API client.
+        googleapiclient.discovery.Resource: The authenticated YouTube API service object.
 
     Raises:
         ValueError: If the 'YOUTUBE_API_KEY' environment variable is not set.
@@ -45,12 +45,11 @@ def get_youtube_client():
 
 
 def get_channel_uploads_playlist(youtube, channel_id: str = "UC9rMiEjNaCSsebs31MRDCRA") -> str:
-    """Retrieve the primary 'Uploads' playlist ID for a given channel.
+    """Retrieve the primary 'uploads' playlist ID for a given YouTube channel.
 
     Args:
         youtube (googleapiclient.discovery.Resource): The initialized YouTube API client.
-        channel_id (str, optional): The unique identifier of the YouTube channel.
-            Defaults to "UC9rMiEjNaCSsebs31MRDCRA".
+        channel_id (str, optional): The target YouTube channel ID.
 
     Returns:
         str: The playlist ID corresponding to the channel's uploads.
@@ -60,14 +59,14 @@ def get_channel_uploads_playlist(youtube, channel_id: str = "UC9rMiEjNaCSsebs31M
 
 
 def get_all_video_ids(youtube, playlist_id: str) -> List[str]:
-    """Retrieve all video IDs associated with a specific playlist.
+    """Fetch all video IDs contained within a specified YouTube playlist.
 
     Args:
         youtube (googleapiclient.discovery.Resource): The initialized YouTube API client.
-        playlist_id (str): The unique identifier of the YouTube playlist.
+        playlist_id (str): The ID of the playlist to query.
 
     Returns:
-        List[str]: A list of video IDs contained within the playlist.
+        List[str]: A list of video IDs extracted from the playlist.
     """
     video_ids = []
     next_page_token = None
@@ -122,7 +121,7 @@ def append_to_parquet(data_list: List[dict], filepath: Path):
     """Append a list of dictionaries to a Parquet file.
 
     Create a new Parquet file if one does not exist; otherwise, concatenate
-    the new data with the existing dataset.
+    the new data with the existing dataset vertically.
 
     Args:
         data_list (List[dict]): The data records to append.
@@ -138,7 +137,13 @@ def append_to_parquet(data_list: List[dict], filepath: Path):
 
 
 def append_to_db(data_list: List[dict], table_name: str, db_uri: str):
-    """Append a list of dictionaries directly to a PostgreSQL table."""
+    """Append a list of dictionaries directly to a PostgreSQL database table.
+
+    Args:
+        data_list (List[dict]): The data records to append.
+        table_name (str): The name of the target database table.
+        db_uri (str): The PostgreSQL connection URI.
+    """
     if data_list:
         df_new = pl.DataFrame(data_list)
         try:
@@ -148,9 +153,9 @@ def append_to_db(data_list: List[dict], table_name: str, db_uri: str):
                 if_table_exists="append",
                 engine="sqlalchemy",
             )
-            logger.info(f"Appended {len(data_list)} records to DB table '{table_name}'")
+            logger.info(f"Appended {len(data_list)} records to local DB table '{table_name}'")
         except Exception as e:
-            logger.error(f"Database append failed for {table_name}: {e}")
+            logger.error(f"Local database append failed for {table_name}: {e}")
 
 
 def fetch_video_metadata(
@@ -161,20 +166,21 @@ def fetch_video_metadata(
     scraped_at: str,
     update_snippets: bool,
 ) -> Tuple[List[dict], List[dict], List[str]]:
-    """Fetch snippet and statistics metadata for a batch of videos.
+    """Retrieve metadata and statistics for a batch of YouTube videos.
 
     Args:
         youtube (googleapiclient.discovery.Resource): The initialized YouTube API client.
-        batch_ids (List[str]): A list of video IDs to query.
+        batch_ids (List[str]): A list of video IDs to query in the current batch.
         batch_formats (dict): A mapping of video IDs to their respective formats.
-        processed_ids (List[str]): A list of previously processed video IDs.
+        processed_ids (List[str]): A list of video IDs that have already been processed.
         scraped_at (str): The ISO 8601 timestamp representing the extraction time.
-        update_snippets (bool): Flag indicating whether to force update snippets
-            for existing videos.
+        update_snippets (bool): Flag indicating whether to update snippet data for previously processed videos.
 
     Returns:
-        Tuple[List[dict], List[dict], List[str]]: A tuple containing the extracted statistics
-            records, snippet records, and a list of newly encountered video IDs.
+        Tuple[List[dict], List[dict], List[str]]: A tuple containing:
+            - A list of dictionaries representing video statistics records.
+            - A list of dictionaries representing video snippet records.
+            - A list of newly encountered video IDs.
     """
     stats_records = []
     snippet_records = []
@@ -289,8 +295,9 @@ def fetch_video_transcript(video_id: str) -> str | None:
         video_id (str): The specific video ID to query.
 
     Returns:
-        str: The concatenated full transcript text, or a flag to skip appending.
-        NAN: The transcript is unavailable.
+        str | None: The concatenated full transcript text. Returns "FAILED_FETCH" if
+            an unexpected error occurs indicating the append should be skipped, or
+            None if the transcript is definitively unavailable or disabled.
     """
     try:
         # Introduce jitter to mitigate temporary rate-limiting or IP blocking
@@ -308,7 +315,7 @@ def fetch_video_transcript(video_id: str) -> str | None:
         return None
     except Exception as e:
         logger.warning(f"Unexpected transcript error for {video_id}: {type(e).__name__} - {e}")
-        return "FAILED_FETCH"  # Flag to skip appending
+        return "FAILED_FETCH"
 
 
 @app.command()
@@ -344,15 +351,16 @@ def main(
         channel_id (str, optional): The target YouTube channel ID.
         update_snippets (bool, optional): Flag to overwrite snippets of previously processed videos.
         fetch_transcripts (bool, optional): Flag to run the pipeline strictly for fetching missing transcripts.
+        at_local_db (bool, optional): Flag to route data persistence to a local PostgreSQL database.
     """
     scraped_at = datetime.now(timezone.utc).isoformat()
     db_uri = ""
 
     if at_local_db:
-        logger.info("Database mode engaged. Pulling state from PostgreSQL...")
-        db_uri = os.environ.get("DATABASE_URL")
+        logger.info("Local database mode engaged. Pulling state from PostgreSQL...")
+        db_uri = os.environ.get("LOCAL_DB_URL")
         if not db_uri:
-            logger.error("DATABASE_URL not found in .env. Halting.")
+            logger.error("LOCAL_DB_URL not found in .env. Halting.")
             return
 
         try:
@@ -376,7 +384,7 @@ def main(
 
         if at_local_db:
             try:
-                # DB Context
+                # Query previously fetched transcripts to avoid duplication in database mode.
                 df_fetched = pl.read_database_uri(
                     "SELECT video_id FROM skz_transcripts", uri=db_uri, engine="connectorx"
                 )
@@ -396,7 +404,7 @@ def main(
                 logger.error(f"DB Read Error during transcript init: {e}")
                 return
         else:
-            # Parquet Context
+            # Load existing transcript states from local Parquet files.
             if transcripts_output.exists():
                 df_existing = pl.read_parquet(transcripts_output)
                 if "video_id" in df_existing.columns:
@@ -423,19 +431,28 @@ def main(
             f"Found {len(missing_transcripts)} missing long-form/live transcripts. Fetching up to 40..."
         )
         transcript_data = []
+        unavailable_transcript_count = 0
 
         for vid in tqdm(ids_to_fetch, desc="Fetching Transcripts"):
             text = fetch_video_transcript(vid)
             if text != "FAILED_FETCH":
                 transcript_data.append({"video_id": vid, "transcript": text})
 
+            if text is None:
+                unavailable_transcript_count += 1
+
         if at_local_db:
             append_to_db(transcript_data, "skz_transcripts", db_uri)
         else:
             append_to_parquet(transcript_data, transcripts_output)
 
+        if unavailable_transcript_count > 0:
+            logger.debug(
+                f"{unavailable_transcript_count} unavailable transcript(s) found and appended as NULL(s)."
+            )
+
         logger.success(f"Successfully fetched and appended {len(transcript_data)} transcripts.")
-        return  # To prevent from fetching the other data
+        return
 
     try:
         youtube = get_youtube_client()
@@ -482,8 +499,6 @@ def main(
             stats_records.extend(stats_batch)
             snippet_records.extend(snippet_batch)
 
-            # Comments are always fetched regardless of 'processed_ids' state to capture
-            # engagement and rank shifts over time.
             for vid in batch_ids:
                 comments_batch = fetch_top_comments(youtube, vid, scraped_at)
                 comment_data.extend(comments_batch)
@@ -492,18 +507,24 @@ def main(
                 if vid not in processed_ids:
                     processed_ids.append(vid)
 
-            save_checkpoint(processed_ids)
+            if not at_local_db:
+                save_checkpoint(processed_ids)
 
         logger.success("Extraction completed successfully.")
-
     except Exception as e:
         logger.error(f"Extraction halted: {e}")
-
     finally:
-        save_checkpoint(processed_ids)
-        append_to_parquet(stats_records, stats_output)
-        append_to_parquet(snippet_records, snippet_output)
-        append_to_parquet(comment_data, comments_output)
+        if at_local_db:
+            logger.info("Routing batch results directly to PostgreSQL...")
+            append_to_db(stats_records, "skz_stats", db_uri)
+            append_to_db(snippet_records, "skz_snippets", db_uri)
+            append_to_db(comment_data, "skz_comments", db_uri)
+        else:
+            logger.info("Routing batch results to local Parquet files...")
+            save_checkpoint(processed_ids)
+            append_to_parquet(stats_records, stats_output)
+            append_to_parquet(snippet_records, snippet_output)
+            append_to_parquet(comment_data, comments_output)
 
 
 if __name__ == "__main__":
