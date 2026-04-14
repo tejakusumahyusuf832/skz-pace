@@ -59,8 +59,8 @@ You have the technical rigor of a full-stack data scientist combined with an und
 
 #### Solution Design
 
-* **Phase A (The Data Analysis Foundation):** An ETL pipeline extracting YouTube metadata and comments. We will use a free, state-of-the-art multilingual transformer (`twitter-xlm-roberta-base-sentiment`) to extract sentiment scores across fan languages.
-* **Phase B (ML Expansion):** A predictive A/B Scenario Simulator. We will use open-source semantic embedding models (`EmbeddingGemma` or `Qwen3-Embedding`) to convert text into vectors. We will normalize the target variable via Time-Decay Weighting to prevent older videos from skewing predictions. 
+* **Phase A (The Data Analysis Foundation):** An Airflow-orchestrated ETL pipeline extracting YouTube metadata and comments, utilizing an Incremental Load strategy (delta-loads) to strictly manage daily API quota limits. Raw data versioning will be handled via DVC. We will use a free multilingual transformer (`twitter-xlm-roberta-base-sentiment`) to extract sentiment scores, pre-computing these scores in the pipeline to avoid live-inference bottlenecks.
+* **Phase B (ML Expansion):** A predictive A/B Scenario Simulator. We will use open-source semantic embedding models (`EmbeddingGemma` or `Qwen3-Embedding`) to convert text into vectors. We will normalize the target variable via Time-Decay Weighting, and track all model experiments, hyperparameters, and performance metrics using MLflow. 
 * **POC Value:** Validating assumptions about what fans want before overhauling the 2026/2027 production calendar.
 
 ## Implementation Plan
@@ -70,28 +70,30 @@ You have the technical rigor of a full-stack data scientist combined with an und
 * **Roles Required:** Project Manager, Data Engineer, Data Analyst, Data Scientist, and Machine Learning Engineer. *Note: A full-stack data scientist will be owning these hats sequentially.*
 * **Data Source:** YouTube Data API v3 (Free tier quota).
 * **Infrastructure:** 
-    * **Development (Dev):** Local development environment (VS Code, uv), Local PostgreSQL, and pgAdmin.
-    * **Production (Prod):** Google Colab (Free GPU tier) for model training, Neon for serverless cloud database hosting, and Hugging Face Spaces for free web hosting.
+    * **Development (Dev):** Local development environment (VS Code, uv), Local PostgreSQL, pgAdmin, and Docker Desktop.
+    * **Production (Prod):** Neon for serverless cloud database hosting, Hugging Face Spaces for free web hosting, and DagsHub for remote MLflow hosting.
+    * **Compute (Hybrid Runner):** Google Colab (Free GPU tier) utilized strictly as a headless runner to execute version-controlled training scripts pulled from GitHub.
 * **Technologies:**
     | Category | Tools |
     |----------|-------|
     | Language | Python, SQL |
     | Data Acquisition | `google-api-python-client`, `youtube-transcript-api` |
     | Data Prep & Analysis | Pandas/Polars/Spark, HuggingFace transformers (`cardiffnlp/twitter-xlm-roberta-base-sentiment`) |
-    | Database | Parquet/CSV files (for initial storage in Google Drive), Local PostgreSQL + pgAdmin, Neon Serverless PostgreSQL (Prod), or BigQuery (for dashboard querying) |
-    | Pipeline Automation | GitHub Actions (Cron jobs for daily data updates) |
+    | Database | Parquet/CSV files tracked via DVC, Local PostgreSQL + pgAdmin, Neon Serverless PostgreSQL (Prod) |
+    | Pipeline Automation | Apache Airflow (DAGs orchestrating the local ETL data extraction), GitHub Actions (CI/CD for testing and deployment). |
     | ML & NLP | Scikit-learn, XGBoost, sentence-transformers (`EmbeddingGemma or Qwen3-Embedding`) |
+    | MLOps & Tracking | MLflow (Experiment tracking via DagsHub), DVC (Data Version Control) |
     | API | FastAPI |
-    | Visualization/UI | Plotly/Seaborn/Matplotlib, Power BI and Streamlit (for the interactive dashboard) |
-    | Deployment | Docker, Hugging Face Spaces (Free Tier), GitHub |
+    | Visualization/UI | Plotly/Seaborn/Matplotlib, Power BI, and Streamlit (for the interactive dashboard) |
+    | Deployment | Docker (Containerization), Git (Version Control), Hugging Face Spaces (Free Tier) |
 
 ### Project Roadmap
 
 | Phase | Workflow Stage | Key Tasks | Primary Hat | Due Date |
 | --- | --- | --- | --- | --- |
-| **1** | **Data Engineering** | Build an ELT pipeline using the YouTube API, transform in-memory, and load to the database. Test the ETL code safely against a local PostgreSQL database (Dev). Once validated, deploy to GitHub Actions to automate weekly updates directly to Neon (Prod). | Data Engineer | Week 1-3 |
-| **2** | **Solution Development** | Perform EDA on engagement metrics. Run sentiment analysis and language detection on comments. Train embedding models on video metadata and develop the regression simulator with Time-Decay normalization. | Data Analyst & Data Scientist | Week 4-5 |
-| **3** | **Solution Deployment** | Wrap the ML model in a FastAPI endpoint. Build an interactive Streamlit dashboard for stakeholders. Containerize the application using Docker and deploy it to Hugging Face Spaces for free, public access. | ML Engineer & Data Scientist | Week 6-7 |
+| **1** | **Data Engineering** | Build the ETL pipeline. Orchestrate the extraction tasks using Airflow DAGs to handle API quota limits and retries. Version raw datasets (`.parquet`) using DVC. Load transformed data into Neon PostgreSQL. | Data Engineer | Week 1-3 |
+| **2** | **Solution Development** | Perform EDA. Run sentiment analysis and generate text embeddings. Train the Time-Decay regression model by manually triggering a Colab notebook that clones and runs `src/modeling/train.py` from GitHub. Track all model training runs, hyperparameters, and metrics using DagsHub's MLflow server. | Data Analyst & Data Scientist | Week 4-5 |
+| **3** | **Solution Deployment** | Wrap the ML model in a FastAPI endpoint, configured to pull the registered production model directly from the remote DagsHub MLflow registry. Build an interactive Streamlit UI. Containerize both applications using Docker. Establish GitHub Actions for CI/CD to automatically test and deploy Docker images to Hugging Face Spaces. | ML Engineer & Data Scientist | Week 6-7 |
 | **4** | **Evaluation & Docs** | Assess model performance against business metrics. Finalize GitHub repository documentation (README, architecture diagram). Conduct project retrospective. | Project Manager | Week 8+ |
 
 ---
