@@ -340,6 +340,11 @@ def main(
         "--at-local-db",
         help="Route operations through the local PostgreSQL database instead of Parquet files.",
     ),
+    at_cloud_db: bool = typer.Option(
+        False,
+        "--at-cloud-db",
+        help="Route operations through the Neon Serverless PostgreSQL database.",
+    ),
 ):
     """Execute the primary data extraction pipeline.
 
@@ -356,11 +361,22 @@ def main(
     scraped_at = datetime.now(timezone.utc).isoformat()
     db_uri = ""
 
-    if at_local_db:
-        logger.info("Local database mode engaged. Pulling state from PostgreSQL...")
-        db_uri = os.environ.get("LOCAL_DB_URL")
+    # Check for conflicting flags
+    if at_local_db and at_cloud_db:
+        logger.error("Cannot use both --at-local-db and --at-cloud-db simultaneously. Halting.")
+        return
+
+    is_db_mode = at_local_db or at_cloud_db
+
+    if is_db_mode:
+        target_env = "LOCAL_DB_URL" if at_local_db else "CLOUD_DB_URL"
+        db_type = "Local" if at_local_db else "Cloud (Neon)"
+
+        logger.info(f"{db_type} database mode engaged. Pulling state from PostgreSQL...")
+        db_uri = os.environ.get(target_env)
+
         if not db_uri:
-            logger.error("LOCAL_DB_URL not found in .env. Halting.")
+            logger.error(f"{target_env} not found in .env. Halting.")
             return
 
         try:
@@ -374,7 +390,7 @@ def main(
             )
             processed_ids = []
     else:
-        logger.info("Local mode engaged. Pulling state from JSON checkpoint...")
+        logger.info("File mode engaged. Pulling state from JSON checkpoint...")
         processed_ids = load_checkpoint()
 
     if fetch_transcripts:
@@ -382,7 +398,7 @@ def main(
         already_fetched = set()
         valid_ids = set(processed_ids)
 
-        if at_local_db:
+        if is_db_mode:
             try:
                 # Query previously fetched transcripts to avoid duplication in database mode.
                 df_fetched = pl.read_database_uri(
@@ -441,7 +457,7 @@ def main(
             if text is None:
                 unavailable_transcript_count += 1
 
-        if at_local_db:
+        if is_db_mode:
             append_to_db(transcript_data, "skz_transcripts", db_uri)
         else:
             append_to_parquet(transcript_data, transcripts_output)
@@ -514,7 +530,7 @@ def main(
     except Exception as e:
         logger.error(f"Extraction halted: {e}")
     finally:
-        if at_local_db:
+        if is_db_mode:
             logger.info("Routing batch results directly to PostgreSQL...")
             append_to_db(stats_records, "skz_stats", db_uri)
             append_to_db(snippet_records, "skz_snippets", db_uri)
