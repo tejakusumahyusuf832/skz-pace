@@ -153,9 +153,9 @@ def append_to_db(data_list: List[dict], table_name: str, db_uri: str):
                 if_table_exists="append",
                 engine="sqlalchemy",
             )
-            logger.info(f"Appended {len(data_list)} records to local DB table '{table_name}'")
+            logger.info(f"Appended {len(data_list)} records to DB table '{table_name}'")
         except Exception as e:
-            logger.error(f"Local database append failed for {table_name}: {e}")
+            logger.error(f"Database append failed for {table_name}: {e}")
 
 
 def fetch_video_metadata(
@@ -338,7 +338,7 @@ def main(
     at_local_db: bool = typer.Option(
         False,
         "--at-local-db",
-        help="Route operations through the local PostgreSQL database instead of Parquet files.",
+        help="Route operations through the local PostgreSQL database.",
     ),
     at_cloud_db: bool = typer.Option(
         False,
@@ -357,6 +357,7 @@ def main(
         update_snippets (bool, optional): Flag to overwrite snippets of previously processed videos.
         fetch_transcripts (bool, optional): Flag to run the pipeline strictly for fetching missing transcripts.
         at_local_db (bool, optional): Flag to route data persistence to a local PostgreSQL database.
+        at_cloud_db (bool, optional): Flag to route data persistence to a cloud PostgreSQL database.
     """
     scraped_at = datetime.now(timezone.utc).isoformat()
     db_uri = ""
@@ -532,14 +533,14 @@ def main(
     finally:
         if is_db_mode:
             logger.info("Routing batch results directly to PostgreSQL...")
-            append_to_db(stats_records, "skz_stats", db_uri)
             append_to_db(snippet_records, "skz_snippets", db_uri)
+            append_to_db(stats_records, "skz_stats", db_uri)
             append_to_db(comment_data, "skz_comments", db_uri)
         else:
             logger.info("Routing batch results to local Parquet files...")
             save_checkpoint(processed_ids)
-            append_to_parquet(stats_records, stats_output)
             append_to_parquet(snippet_records, snippet_output)
+            append_to_parquet(stats_records, stats_output)
             append_to_parquet(comment_data, comments_output)
 
 
