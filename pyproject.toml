@@ -18,10 +18,8 @@ classifiers = [
 dependencies = [
     "connectorx>=0.4.5",
     "google-api-python-client>=2.192.0",
-    "ipykernel>=7.2.0",
     "loguru",
     "mkdocs",
-    "pandas>=3.0.1",
     "pip",
     "polars-lts-cpu>=1.33.1",
     "psycopg2-binary>=2.9.11",
@@ -47,4 +45,10 @@ extend-select = ["I"]  # Add import sorting
 [tool.ruff.lint.isort]
 known-first-party = ["src"]
 force-sort-within-sections = true
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.2.0",
+    "pandas>=3.0.1",
+]
 
