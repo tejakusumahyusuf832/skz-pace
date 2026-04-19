@@ -1,3 +1,11 @@
+/*
+How to Set Up:
+1. Create a new database and name it as `skz_pace_db`.
+2. Connect this query to the database.
+3. Prepare the connection URL and put it in your .env file.
+4. Run the following queries below.
+*/
+
 -- 1. Snippets (Static video metadata)
 CREATE TABLE skz_snippets (
     video_id VARCHAR(50) PRIMARY KEY,
