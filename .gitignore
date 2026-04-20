@@ -197,6 +197,7 @@ cython_debug/
 full-stack-data-science-notes/
 cleanup.ipynb
 cleanup.sql
+db_connection_test.py
 
 # Archives
 Makefile
