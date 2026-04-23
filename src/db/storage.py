@@ -10,7 +10,6 @@ def append_to_db(data_list: List[dict], table_name: str, db_uri: str) -> None:
         logger.info(f"No records provided for {table_name}. Skipping DB load.")
         return
 
-    # QUICK FIX: Serialize dicts/lists to JSON strings for PostgreSQL
     for row in data_list:
         for key, value in row.items():
             if isinstance(value, dict) or isinstance(value, list):
