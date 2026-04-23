@@ -3,7 +3,7 @@ import random
 import time
 
 from loguru import logger
-import polars as pl
+from sqlalchemy import create_engine, text
 from tqdm import tqdm
 import typer
 from youtube_transcript_api import NoTranscriptFound, TranscriptsDisabled, YouTubeTranscriptApi
@@ -64,64 +64,47 @@ def main(
         return
 
     # Retrieve the database URI
-    db_uri = os.environ.get(uri_key)
-    if not db_uri:
-        db_uri = ""
-
-    try:
-        df_proc = pl.read_database_uri(
-            "SELECT video_id FROM skz_snippets", uri=db_uri, engine="connectorx"
-        )
-        processed_ids = df_proc["video_id"].to_list() if not df_proc.is_empty() else []
-    except Exception as e:
-        logger.warning(f"Could not read from DB. Proceeding with empty processed_ids. Error: {e}")
-        processed_ids = []
+    db_uri = os.environ.get(uri_key, "")
 
     logger.info("Starting to fetch video transcripts...")
-    already_fetched = set()
-    valid_ids = set(processed_ids)
+
+    # Create SQLAlchemy Engine
+    engine = create_engine(db_uri)
 
     try:
-        # Query previously fetched transcripts to avoid duplication in database mode.
-        df_fetched = pl.read_database_uri(
-            "SELECT video_id FROM skz_transcripts", uri=db_uri, engine="connectorx"
-        )
-        already_fetched = (
-            set(df_fetched["video_id"].to_list()) if not df_fetched.is_empty() else set()
-        )
+        with engine.connect() as conn:
+            query = text("""
+                SELECT s.video_id
+                FROM skz_snippets s
+                LEFT JOIN skz_transcripts t ON s.video_id = t.video_id
+                WHERE s.video_format IN ('Long-form', 'Live/VOD')
+                  AND t.video_id IS NULL
+                LIMIT :limit
+            """)
 
-        df_valid = pl.read_database_uri(
-            "SELECT video_id FROM skz_snippets WHERE video_format IN ('Long-form', 'Live/VOD')",
-            uri=db_uri,
-            engine="connectorx",
-        )
-        valid_ids = set(df_valid["video_id"].to_list()) if not df_valid.is_empty() else set()
+            # Execute and extract the list of strings
+            result = conn.execute(query, {"limit": limit})
+            ids_to_fetch = result.scalars().all()
+
     except Exception as e:
         logger.error(f"DB Read Error during transcript init: {e}")
         return
-
-    missing_transcripts = [
-        vid for vid in processed_ids if vid not in already_fetched and vid in valid_ids
-    ]
-    ids_to_fetch = missing_transcripts[:limit]
 
     if not ids_to_fetch:
         logger.info("No new long-form/live transcripts to fetch. Exiting.")
         return
 
-    logger.info(
-        f"Found {len(missing_transcripts)} missing long-form/live transcripts. Fetching up to {limit}..."
-    )
+    logger.info(f"Found missing long-form/live transcripts. Fetching up to {len(ids_to_fetch)}...")
 
     transcript_data = []
     unavailable_transcript_count = 0
 
     for vid in tqdm(ids_to_fetch, desc="Fetching Transcripts"):
-        text = fetch_video_transcript(vid)
-        if text != "FAILED_FETCH":
-            transcript_data.append({"video_id": vid, "transcript": text})
+        transcript_text = fetch_video_transcript(vid)
+        if transcript_text != "FAILED_FETCH":
+            transcript_data.append({"video_id": vid, "transcript": transcript_text})
 
-        if text is None:
+        if transcript_text is None:
             unavailable_transcript_count += 1
 
     append_to_db(transcript_data, "skz_transcripts", db_uri)
