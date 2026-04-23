@@ -1,0 +1,7 @@
+# Include core dependencies
+-r requirements.txt
+
+# Dev Dependencies
+ipykernel>=7.2.0
+pandas>=3.0.2
+pyarrow>=23.0.1
