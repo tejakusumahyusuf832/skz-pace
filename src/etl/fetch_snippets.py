@@ -1,12 +1,14 @@
 import os
+from typing import Any, Sequence
+
 from loguru import logger
-from typing import Sequence, Any
 from sqlalchemy import create_engine, text
 import typer
 
 from src.db.connection import is_connected_to_db
 
 app = typer.Typer()
+
 
 def upsert_snippets(data_list: list, db_uri: str) -> None:
     """Inserts new snippets, or updates existing ones if the video_id already exists."""
@@ -15,7 +17,7 @@ def upsert_snippets(data_list: list, db_uri: str) -> None:
         return
 
     engine = create_engine(db_uri)
-    
+
     # The ON CONFLICT clause is the magic that turns an Insert into an Update
     query = text("""
         INSERT INTO skz_snippets 
@@ -38,36 +40,42 @@ def upsert_snippets(data_list: list, db_uri: str) -> None:
     except Exception as e:
         logger.error(f"Database upsert failed for skz_snippets: {e}")
 
+
 def process_snippets(raw_data: Sequence[Any], formats_map: dict) -> list:
     """Transforms raw JSON API responses into flat dictionary records."""
     snippet_records = []
-    
+
     for row in raw_data:
         vid_response = row["video_response"]
         scraped_at = row["scraped_at"]
-        
+
         for vid_info in vid_response.get("items", []):
             video_id = vid_info["id"]
             snippet = vid_info["snippet"]
 
-            snippet_records.append({
-                "video_id": video_id,
-                "published_at": snippet.get("publishedAt"),
-                "video_format": formats_map.get(video_id, "Unknown"),
-                "title": snippet.get("title"),
-                "description": snippet.get("description"),
-                "category_id": snippet.get("categoryId"),
-                "tags": ",".join(snippet.get("tags", [])),
-                "video_link": f"https://www.youtube.com/watch?v={video_id}",
-                "scraped_at": scraped_at,
-            })
-            
+            snippet_records.append(
+                {
+                    "video_id": video_id,
+                    "published_at": snippet.get("publishedAt"),
+                    "video_format": formats_map.get(video_id, "Unknown"),
+                    "title": snippet.get("title"),
+                    "description": snippet.get("description"),
+                    "category_id": snippet.get("categoryId"),
+                    "tags": ",".join(snippet.get("tags", [])),
+                    "video_link": f"https://www.youtube.com/watch?v={video_id}",
+                    "scraped_at": scraped_at,
+                }
+            )
+
     return snippet_records
+
 
 @app.command()
 def main(
     uri_key_start: str = typer.Option("URI_KEY_START", help="DB URI key containing the raw data"),
-    uri_key_end: str = typer.Option("URI_KEY_END", help="DB URI key containing the transformed data"),
+    uri_key_end: str = typer.Option(
+        "URI_KEY_END", help="DB URI key containing the transformed data"
+    ),
 ):
     if not (is_connected_to_db(uri_key_start) and is_connected_to_db(uri_key_end)):
         return
@@ -100,7 +108,7 @@ def main(
     query += " ORDER BY scraped_at ASC"
 
     with engine_start.connect() as conn:
-        logger.info("Fetching new snippet data from cloud...")
+        logger.info("Fetching new snippet data from raw database...")
         raw_results = conn.execute(text(query)).mappings().all()
 
     if not raw_results:
@@ -110,9 +118,10 @@ def main(
     # 4. Transform and Upsert
     logger.info(f"Transforming {len(raw_results)} new batches...")
     transformed_data = process_snippets(raw_results, formats_map)
-    
+
     # Use our new upsert function instead of append_to_db!
     upsert_snippets(transformed_data, db_uri_end)
+
 
 if __name__ == "__main__":
     app()
