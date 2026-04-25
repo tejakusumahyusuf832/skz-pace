@@ -1,3 +1,9 @@
+"""Retrieve, format, and load closed caption transcripts for video content.
+
+Fetches specific long-form video transcripts via an undocumented YouTube API
+and incorporates sleep jitter to prevent automated connection blocking.
+"""
+
 import os
 import random
 import time
@@ -26,8 +32,6 @@ def fetch_video_transcript(video_id: str) -> str | None:
             None if the transcript is definitively unavailable or disabled.
     """
     try:
-        # Introduce jitter to mitigate temporary rate-limiting or IP blocking
-        # from the undocumented transcript API.
         time.sleep(random.uniform(57.0, 67.3))
         ytt_api = YouTubeTranscriptApi()
         transcript = ytt_api.list(video_id).find_transcript(["en", "ko"])
@@ -50,9 +54,14 @@ def main(
         40, help="Maximum number of transcripts to fetch. Cannot exceed 40."
     ),
     uri_key: str = typer.Option("URI_KEY", help="The .env key containing the DB URI."),
-):
-    # Check max number of transcripts to fetch
-    # Can only fetch up to 40 transcripts
+) -> None:
+    """Execute the extraction pipeline for video transcripts directly to the target database.
+
+    Args:
+        limit (int, optional): Restrict the number of transcripts processed per run.
+            Defaults to 40.
+        uri_key (str, optional): The database connection URI key.
+    """
     if limit > 40:
         logger.debug("Cannot fetch more than 40 transcripts.")
         limit = 40
@@ -63,12 +72,11 @@ def main(
     if not db_uri_connection:
         return
 
-    # Retrieve the database URI
+    # Retrieve the database URL
     db_uri = os.environ.get(uri_key, "")
 
     logger.info("Starting to fetch video transcripts...")
 
-    # Create SQLAlchemy Engine
     engine = create_engine(db_uri)
 
     try:

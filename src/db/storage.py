@@ -1,3 +1,9 @@
+"""Database storage operations for raw and processed analytics data.
+
+Provides utilities for bulk data insertion, handling JSON serialization
+for complex objects, and pruning old data to maintain storage efficiency.
+"""
+
 import json
 from typing import List
 
@@ -6,10 +12,21 @@ from sqlalchemy import create_engine, text
 
 
 def append_to_db(data_list: List[dict], table_name: str, db_uri: str) -> None:
+    """Insert a list of dictionary records into a specified database table.
+
+    Automatically serializes nested lists and dictionaries into JSON strings
+    prior to insertion to align with PostgreSQL JSONB column requirements.
+
+    Args:
+        data_list (List[dict]): The records to insert, represented as dictionaries.
+        table_name (str): The target database table name.
+        db_uri (str): The connection string for the target database.
+    """
     if not data_list:
         logger.info(f"No records provided for {table_name}. Skipping DB load.")
         return
 
+    # Serialize nested structures for database compatibility
     for row in data_list:
         for key, value in row.items():
             if isinstance(value, dict) or isinstance(value, list):
@@ -33,7 +50,13 @@ def append_to_db(data_list: List[dict], table_name: str, db_uri: str) -> None:
 
 
 def prune_old_raw_data(db_uri: str, days_old: int = 7) -> None:
-    """Deletes raw JSON data older than a specified number of days to save cloud storage."""
+    """Delete raw JSON data older than a specified threshold to free up cloud storage.
+
+    Args:
+        db_uri (str): The connection string for the database to prune.
+        days_old (int, optional): The age threshold in days for record deletion.
+            Defaults to 7.
+    """
     engine = create_engine(db_uri)
 
     queries = {

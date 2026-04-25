@@ -1,3 +1,9 @@
+"""Transform and load top-level YouTube comments into structured databases.
+
+Extracts unstructured text data from the raw data lake, isolates text bodies
+and authorship details, and formats them for downstream NLP and sentiment analysis.
+"""
+
 import os
 from typing import Any, Sequence
 
@@ -12,6 +18,14 @@ app = typer.Typer()
 
 
 def process_comments(raw_data: Sequence[Any]) -> list:
+    """Parse nested JSON comment threads into standardized dictionary objects.
+
+    Args:
+        raw_data (Sequence[Any]): Row proxies containing the raw comments JSON from DB.
+
+    Returns:
+        list: A flattened list of individual top-level comment details.
+    """
     comment_data = []
 
     for row in raw_data:
@@ -42,7 +56,13 @@ def main(
     uri_key_end: str = typer.Option(
         "URI_KEY_END", help="DB URI key containing the transformed data"
     ),
-):
+) -> None:
+    """Execute the extraction, transformation, and load process for top comments.
+
+    Args:
+        uri_key_start (str, optional): The origin database connection key.
+        uri_key_end (str, optional): The destination database connection key.
+    """
     if not (is_connected_to_db(uri_key_start) and is_connected_to_db(uri_key_end)):
         return
 

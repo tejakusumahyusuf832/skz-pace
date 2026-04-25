@@ -1,3 +1,9 @@
+"""Extract raw YouTube API metadata and load it into a cloud database.
+
+Handles batched API requests with exponential backoff for rate limits,
+fetching snippets, statistics, and top comments for specified channel playlists.
+"""
+
 from datetime import datetime, timezone
 import os
 from typing import List
@@ -16,7 +22,19 @@ from src.db.storage import append_to_db, prune_old_raw_data
 app = typer.Typer()
 
 
-def get_youtube_client(api_key: str = "YOUTUBE_API_KEY"):
+def get_youtube_client(api_key: str = "YOUTUBE_API_KEY") -> object:
+    """Initialize and return the Google API client for YouTube v3.
+
+    Args:
+        api_key (str, optional): The environment variable key containing the
+            Google Cloud API Key. Defaults to "YOUTUBE_API_KEY".
+
+    Returns:
+        object: An initialized googleapiclient.discovery.Resource instance.
+
+    Raises:
+        ValueError: If the specified environment variable is not found.
+    """
     API_KEY = os.environ.get(api_key)
     if not API_KEY:
         logger.error(f"{api_key} environment variable not set.")
@@ -60,8 +78,15 @@ def get_all_video_ids(youtube, playlist_id: str) -> List[str]:
     return video_ids
 
 
-def is_server_error(exception):
-    """Only retry if YouTube returns a 5xx Server Error (like 503)."""
+def is_server_error(exception) -> bool:
+    """Evaluate if an exception is a server-side 5xx HTTP error.
+
+    Args:
+        exception (Exception): The exception raised during an API call.
+
+    Returns:
+        bool: True if the exception is an HttpError with a status code >= 500.
+    """
     if isinstance(exception, HttpError):
         return exception.resp.status >= 500
     return False
@@ -74,6 +99,15 @@ def is_server_error(exception):
     reraise=True,
 )
 def get_snippets_and_stats(youtube, batch_ids: List[str]) -> dict:
+    """Fetch snippet and statistics data for a batch of YouTube videos.
+
+    Args:
+        youtube (object): The initialized YouTube API client.
+        batch_ids (List[str]): A list of video IDs to query (max 50).
+
+    Returns:
+        dict: The raw JSON response payload from the YouTube API.
+    """
     return youtube.videos().list(part="snippet,statistics", id=",".join(batch_ids)).execute()
 
 
@@ -84,6 +118,15 @@ def get_snippets_and_stats(youtube, batch_ids: List[str]) -> dict:
     reraise=True,
 )
 def get_top_comments(youtube, video_id: str) -> dict:
+    """Fetch the top relevant comments for a single YouTube video.
+
+    Args:
+        youtube (object): The initialized YouTube API client.
+        video_id (str): The target video ID.
+
+    Returns:
+        dict: The raw JSON response payload containing comment threads.
+    """
     return (
         youtube.commentThreads()
         .list(
@@ -100,6 +143,16 @@ def get_top_comments(youtube, video_id: str) -> dict:
 def get_new_processed_vids(
     to_processed_vids: dict, old_processed_ids: List[str], scraped_at: str
 ) -> List[dict]:
+    """Filter newly discovered videos against previously processed database IDs.
+
+    Args:
+        to_processed_vids (dict): Dictionary mapping video IDs to their formats.
+        old_processed_ids (List[str]): List of video IDs already existing in the database.
+        scraped_at (str): ISO formatted timestamp of the current scraping run.
+
+    Returns:
+        List[dict]: Formatted records of new videos ready for database insertion.
+    """
     new_processed_vids = []
 
     for video_id, video_format in to_processed_vids.items():
@@ -121,22 +174,27 @@ def main(
     channel_id: str = typer.Option(
         "UC9rMiEjNaCSsebs31MRDCRA", help="The channel ID of the specified YouTube channel"
     ),
-):
+) -> None:
+    """Execute the main ETL extraction pipeline for YouTube metadata.
+
+    Args:
+        uri_key (str, optional): The database connection URI key.
+        api_key (str, optional): The YouTube API developer key.
+        channel_id (str, optional): The target YouTube channel ID.
+    """
     # Check database connection
     db_uri_connection = is_connected_to_db(uri_key)
     if not db_uri_connection:
         return
 
-    # Retrieve the database URI
     db_uri = os.environ.get(uri_key, "")
 
-    # Authenticate
+    # Authentication
     try:
         youtube = get_youtube_client(api_key)
     except ValueError:
         return
 
-    # Retrieve
     try:
         engine = create_engine(db_uri)
         with engine.connect() as conn:

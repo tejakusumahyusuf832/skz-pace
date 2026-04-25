@@ -1,3 +1,9 @@
+"""Transform and load raw YouTube snippet payloads into structured databases.
+
+Pulls unprocessed JSON blobs from the cloud data lake, flattens the metadata
+into tabular records, and performs upserts into the transformed schema.
+"""
+
 import os
 from typing import Any, Sequence
 
@@ -11,14 +17,18 @@ app = typer.Typer()
 
 
 def upsert_snippets(data_list: list, db_uri: str) -> None:
-    """Inserts new snippets, or updates existing ones if the video_id already exists."""
+    """Insert new video snippets or update existing ones on primary key conflict.
+
+    Args:
+        data_list (list): A list of dictionaries containing flattened snippet data.
+        db_uri (str): The target database connection string.
+    """
     if not data_list:
         logger.info("No snippet records to upsert. Skipping DB load.")
         return
 
     engine = create_engine(db_uri)
 
-    # The ON CONFLICT clause is the magic that turns an Insert into an Update
     query = text("""
         INSERT INTO skz_snippets 
         (video_id, published_at, video_format, title, description, category_id, tags, video_link, scraped_at)
@@ -42,7 +52,15 @@ def upsert_snippets(data_list: list, db_uri: str) -> None:
 
 
 def process_snippets(raw_data: Sequence[Any], formats_map: dict) -> list:
-    """Transforms raw JSON API responses into flat dictionary records."""
+    """Flatten raw API JSON payloads into standardized dictionary records.
+
+    Args:
+        raw_data (Sequence[Any]): Database row proxy objects containing the raw JSON.
+        formats_map (dict): A mapping of video IDs to their respective formats.
+
+    Returns:
+        list: A list of dictionaries matching the 'skz_snippets' table schema.
+    """
     snippet_records = []
 
     for row in raw_data:
@@ -76,7 +94,13 @@ def main(
     uri_key_end: str = typer.Option(
         "URI_KEY_END", help="DB URI key containing the transformed data"
     ),
-):
+) -> None:
+    """Execute the extraction, transformation, and load process for video snippets.
+
+    Args:
+        uri_key_start (str, optional): The origin database connection key.
+        uri_key_end (str, optional): The destination database connection key.
+    """
     if not (is_connected_to_db(uri_key_start) and is_connected_to_db(uri_key_end)):
         return
 
@@ -85,7 +109,7 @@ def main(
     engine_start = create_engine(db_uri_start)
     engine_end = create_engine(db_uri_end)
 
-    # 1. Get the High-Water Mark to avoid pulling the entire cloud database every time
+    # Get the High-Water Mark to avoid pulling the entire cloud database every time
     try:
         with engine_end.connect() as conn:
             result = conn.execute(text("SELECT MAX(scraped_at) FROM skz_snippets"))
@@ -94,14 +118,14 @@ def main(
         logger.warning(f"Could not read from local DB (table might be empty): {e}")
         last_scraped_at = None
 
-    # 2. Fetch format mapping from Neon DB
+    # Fetch format mapping from Neon DB
     formats_map = {}
     with engine_start.connect() as conn:
         result = conn.execute(text("SELECT video_id, video_format FROM processed_vids"))
         for row in result:
             formats_map[row[0]] = row[1]
 
-    # 3. Fetch NEW data from Neon DB
+    # Fetch NEW data from Neon DB
     query = "SELECT scraped_at, video_response FROM snippets_and_stats"
     if last_scraped_at:
         query += f" WHERE scraped_at > '{last_scraped_at}'"
@@ -115,7 +139,7 @@ def main(
         logger.info("No new snippets to process.")
         return
 
-    # 4. Transform and Upsert
+    # Transform and Upsert
     logger.info(f"Transforming {len(raw_results)} new batches...")
     transformed_data = process_snippets(raw_results, formats_map)
 

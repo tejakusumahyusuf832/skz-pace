@@ -1,3 +1,9 @@
+"""Transform and load raw YouTube performance statistics into structured databases.
+
+Extracts batched JSON responses from the cloud raw data lake, isolates daily
+time-series statistics (views, likes, comments), and writes them to the local schema.
+"""
+
 import os
 from typing import Any, Sequence
 
@@ -12,6 +18,14 @@ app = typer.Typer()
 
 
 def process_stats(raw_data: Sequence[Any]) -> list:
+    """Parse raw API statistics payloads into standardized flat dictionaries.
+
+    Args:
+        raw_data (Sequence[Any]): Database mapping proxy containing nested API JSON.
+
+    Returns:
+        list: A list of flattened statistic records ready for database insertion.
+    """
     stats_records = []
 
     for row in raw_data:
@@ -41,7 +55,13 @@ def main(
     uri_key_end: str = typer.Option(
         "URI_KEY_END", help="DB URI key containing the transformed data"
     ),
-):
+) -> None:
+    """Execute the extraction, transformation, and load process for video statistics.
+
+    Args:
+        uri_key_start (str, optional): The origin database connection key.
+        uri_key_end (str, optional): The destination database connection key.
+    """
     if not (is_connected_to_db(uri_key_start) and is_connected_to_db(uri_key_end)):
         return
 
