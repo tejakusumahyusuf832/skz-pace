@@ -30,3 +30,27 @@ def append_to_db(data_list: List[dict], table_name: str, db_uri: str) -> None:
         )
     except Exception as e:
         logger.error(f"Database append failed for {table_name}: {e}")
+
+
+def prune_old_raw_data(db_uri: str, days_old: int = 7) -> None:
+    """Deletes raw JSON data older than a specified number of days to save cloud storage."""
+    engine = create_engine(db_uri)
+
+    queries = {
+        "snippets_and_stats": text(
+            f"DELETE FROM snippets_and_stats WHERE scraped_at < NOW() - INTERVAL '{days_old} days'"
+        ),
+        "top_comments": text(
+            f"DELETE FROM top_comments WHERE scraped_at < NOW() - INTERVAL '{days_old} days'"
+        ),
+    }
+
+    try:
+        with engine.begin() as conn:  # .begin() automatically handles the transaction commit
+            for table_name, query in queries.items():
+                result = conn.execute(query)
+                logger.success(
+                    f"Pruned {result.rowcount} records older than {days_old} days from '{table_name}'"
+                )
+    except Exception as e:
+        logger.error(f"Failed to prune old data from cloud database: {e}")

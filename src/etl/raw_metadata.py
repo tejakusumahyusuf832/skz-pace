@@ -11,7 +11,7 @@ from tqdm import tqdm
 import typer
 
 from src.db.connection import is_connected_to_db
-from src.db.storage import append_to_db
+from src.db.storage import append_to_db, prune_old_raw_data
 
 app = typer.Typer()
 
@@ -231,6 +231,9 @@ def main(
         append_to_db(fetched_snippets_and_stats, "snippets_and_stats", db_uri)
         append_to_db(fetched_processed_vids, "processed_vids", db_uri)
         append_to_db(fetched_top_comments, "top_comments", db_uri)
+
+        logger.info("Cleaning up old raw data to save cloud storage space...")
+        prune_old_raw_data(db_uri, days_old=7)
 
 
 if __name__ == "__main__":
