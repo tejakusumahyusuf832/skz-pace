@@ -2,7 +2,7 @@ name: Daily Raw SKZ YouTube Metadata Extraction
 
 on:
   schedule:
-    - cron: "45 14 * * *" # Runs every day at 14:45 UTC
+    - cron: "0 15 * * *" # Runs every day at 14:45 UTC
   workflow_dispatch: # Allows you to trigger it manually
 
 jobs:
@@ -25,6 +25,6 @@ jobs:
 
       - name: Run Raw SKZ YouTube Metadata Extraction
         env:
-          URI_KEY: ${{ secrets.RAW_SKZ_PACE_DB_URL }}
-          API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+          RAW_SKZ_PACE_DB_URL: ${{ secrets.RAW_SKZ_PACE_DB_URL }}
+          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
         run: uv run python -m src.etl.raw_metadata --uri-key RAW_SKZ_PACE_DB_URL --api-key YOUTUBE_API_KEY
