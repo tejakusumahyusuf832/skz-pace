@@ -2,7 +2,7 @@ name: Daily Raw SKZ YouTube Metadata Extraction
 
 on:
   schedule:
-    - cron: "0 15 * * *" # Runs every day at 14:45 UTC
+    - cron: "5 15 * * *" # Runs every day at 15:05 UTC
   workflow_dispatch: # Allows you to trigger it manually
 
 jobs:
