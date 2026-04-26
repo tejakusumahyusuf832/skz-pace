@@ -1,34 +1,53 @@
-name: Daily Raw SKZ YouTube Metadata Extraction
+name: 1.0 - Daily YouTube Raw Data Extraction
 
+# -----------------------------------------------------------------------------
+# TRIGGERS
+# -----------------------------------------------------------------------------
 on:
   schedule:
-    - cron: "5 15 * * *" # Runs every day at 15:05 UTC
-  workflow_dispatch: # Allows you to trigger it manually
+    # Runs at 00:00 UTC every day. You can adjust this cron syntax as needed.
+    - cron: '0 0 * * *'
+  
+  # Allows you to trigger this workflow manually from the GitHub Actions UI
+  workflow_dispatch:
 
+# -----------------------------------------------------------------------------
+# JOBS
+# -----------------------------------------------------------------------------
 jobs:
-  extract_and_load:
+  extract_and_load_raw_data:
     runs-on: ubuntu-latest
 
+    # Set the environment variables mapping to our GitHub Secrets
     env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-      
+      RAW_SKZ_PACE_DB_URL: ${{ secrets.RAW_SKZ_PACE_DB_URL }}
+      YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+
     steps:
+      # 1. Check out the repository code
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 2. Install 'uv' by Astral for ultra-fast dependency resolution
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v2
+
+      # 3. Set up Python 3.12 (matching your local environment)
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
         with:
-          version: "latest"
+          python-version: '3.12'
 
-      - name: Set up Python
-        run: uv python install 3.12
-
+      # 4. Install project dependencies using uv
+      # uv sync will read your pyproject.toml and uv.lock to replicate your local environment exactly
       - name: Install dependencies
         run: uv sync --frozen
 
-      - name: Run Raw SKZ YouTube Metadata Extraction
-        env:
-          RAW_SKZ_PACE_DB_URL: ${{ secrets.RAW_SKZ_PACE_DB_URL }}
-          YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
-        run: uv run python -m src.etl.raw_metadata --uri-key RAW_SKZ_PACE_DB_URL --api-key YOUTUBE_API_KEY
+      # 5. Execute the ETL script
+      # We use 'uv run' to execute within the isolated environment.
+      # We pass the Typer options pointing to the environment variable names the script should look for.
+      - name: Run raw_metadata.py ETL pipeline
+        run: |
+          uv run python -m src.etl.raw_metadata \
+            --uri-key "RAW_SKZ_PACE_DB_URL" \
+            --api-key "YOUTUBE_API_KEY"
