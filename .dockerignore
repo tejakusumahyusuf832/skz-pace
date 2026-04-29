@@ -1,0 +1,39 @@
+# Airflow
+logs/
+airflow.cfg
+webserver_config.py
+
+# Data and Models (Keep the container lightweight)
+data/
+models/
+notebooks/
+queries/
+references/
+reports/
+
+# Documentation & Redundant Configs
+docs/
+LICENSE
+Makefile
+requirements.txt
+requirements-dev.txt
+
+# Git and Environments
+.git/
+.venv/
+.github/
+.gitattributes
+.gitignore
+
+# IDE
+.vscode/
+
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# Sensitive Info (Docker Compose will inject this at runtime, don't bake it into the image)
+.env
+
