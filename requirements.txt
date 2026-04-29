@@ -2,7 +2,7 @@
 connectorx>=0.4.5
 google-api-python-client>=2.192.0
 loguru>=0.7.3
-# mkdocs>=1.6.1
+mkdocs>=1.6.1
 pip>=26.0.1
 polars-lts-cpu>=1.33.1
 psycopg2-binary>=2.9.11
