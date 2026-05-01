@@ -1,0 +1,24 @@
+services:
+  data-app:
+    # Tell Compose to build the image using the Dockerfile in this directory (.)
+    build: .
+    
+    # (Optional) Give the built image the name you prefer
+    image: uv-mod-env-query-no-cmd-compose
+    
+    # Load your environment variables from your .env file
+    env_file:
+      - .env
+      
+    # Replicate the '-it' flags to keep the shell interactive
+    # -i
+    stdin_open: true 
+    # -t
+    tty: true        
+    
+    # Run the shell
+    command: sh
+
+# Without `compose.yml`, you'd have to run long commands manually:
+# `docker build -t uv-mod-env-query-no-cmd .`
+# `docker run -it --env-file .env uv-mod-env-query-no-cmd sh`
