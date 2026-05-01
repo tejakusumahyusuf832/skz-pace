@@ -15,6 +15,3 @@ RUN uv pip install --system -r pyproject.toml
 
 # Copy the rest of the project files into the container
 COPY . .
-
-# Tell Docker what to do when the container starts
-CMD ["python", "--version"]
