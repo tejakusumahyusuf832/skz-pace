@@ -20,7 +20,7 @@ services:
     tty: true
     
     # Run the shell
-    command: python -m scripts.main --db-uri-key DOCKER_TRANSFORMED_SKZ_PACE_DB_URL --number 4
+    command: python -m scripts.main --db-uri-key DOCKER_TRANSFORMED_SKZ_PACE_DB_URL --number 90
 
 # Without `compose.yml`, you'd have to run long commands manually:
 # `docker build -t uv-mod-env-query-no-cmd .`

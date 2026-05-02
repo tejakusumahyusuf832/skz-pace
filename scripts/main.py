@@ -24,6 +24,8 @@ def main(
 
     db_uri = os.environ.get(db_uri_key, "")
 
+    print("Hello, Yusuf Tejakusumah!")
+    print("We will process the data in")
     set_process(end=number)
 
     engine = create_engine(db_uri)
