@@ -17,7 +17,7 @@ RUN uv pip install --system -r pyproject.toml
 COPY . .
 
 # ENTRYPOINT is the unbreakable command. It ALWAYS runs.
-ENTRYPOINT ["python", "-m", "scripts.main"]
+# ENTRYPOINT ["python", "-m"]
 
 # CMD provides the DEFAULT arguments. These are easily overridden.
-CMD ["--db-uri-key", "DOCKER_TRANSFORMED_SKZ_PACE_DB_URL", "--number", "3"]
+# CMD ["--db-uri-key", "DOCKER_TRANSFORMED_SKZ_PACE_DB_URL", "--number", "3"]

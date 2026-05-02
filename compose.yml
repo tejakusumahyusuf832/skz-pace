@@ -4,20 +4,23 @@ services:
     build: .
     
     # (Optional) Give the built image the name you prefer
-    image: uv-mod-env-query-no-cmd-compose
+    image: uv-mod-env-query-no-cmd-it-compose-vol
     
     # Load your environment variables from your .env file
     env_file:
       - .env
+    
+    volumes:
+      - .:/skz_pace
       
     # Replicate the '-it' flags to keep the shell interactive
     # -i
-    # stdin_open: true 
+    stdin_open: true 
     # -t
-    # tty: true        
+    tty: true
     
     # Run the shell
-    command: python -m scripts.main --db-uri-key DOCKER_TRANSFORMED_SKZ_PACE_DB_URL --number 5
+    command: python -m scripts.main --db-uri-key DOCKER_TRANSFORMED_SKZ_PACE_DB_URL --number 4
 
 # Without `compose.yml`, you'd have to run long commands manually:
 # `docker build -t uv-mod-env-query-no-cmd .`
