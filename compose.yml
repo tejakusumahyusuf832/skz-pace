@@ -12,12 +12,12 @@ services:
       
     # Replicate the '-it' flags to keep the shell interactive
     # -i
-    stdin_open: true 
+    # stdin_open: true 
     # -t
-    tty: true        
+    # tty: true        
     
     # Run the shell
-    command: sh
+    command: python -m scripts.main --db-uri-key DOCKER_TRANSFORMED_SKZ_PACE_DB_URL --number 5
 
 # Without `compose.yml`, you'd have to run long commands manually:
 # `docker build -t uv-mod-env-query-no-cmd .`

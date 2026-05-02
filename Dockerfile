@@ -15,3 +15,9 @@ RUN uv pip install --system -r pyproject.toml
 
 # Copy the rest of the project files into the container
 COPY . .
+
+# ENTRYPOINT is the unbreakable command. It ALWAYS runs.
+ENTRYPOINT ["python", "-m", "scripts.main"]
+
+# CMD provides the DEFAULT arguments. These are easily overridden.
+CMD ["--db-uri-key", "DOCKER_TRANSFORMED_SKZ_PACE_DB_URL", "--number", "3"]
