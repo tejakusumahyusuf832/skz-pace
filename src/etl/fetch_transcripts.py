@@ -10,7 +10,6 @@ import time
 
 from loguru import logger
 from sqlalchemy import create_engine, text
-from tqdm import tqdm
 import typer
 from youtube_transcript_api import NoTranscriptFound, TranscriptsDisabled, YouTubeTranscriptApi
 
@@ -36,12 +35,13 @@ def fetch_video_transcript(video_id: str) -> str | None:
         ytt_api = YouTubeTranscriptApi()
         transcript = ytt_api.list(video_id).find_transcript(["en", "ko"])
         full_transcript = " ".join([seg.text for seg in transcript.fetch()]).replace("\n", " ")
+        logger.success(f"Transcript fetched successfully for {video_id}")
         return full_transcript
     except NoTranscriptFound:
         logger.debug(f"No EN/KO transcript found for {video_id}.")
         return None
     except TranscriptsDisabled:
-        logger.debug(f"Transcripts completely disabled for {video_id}.")
+        logger.debug(f"Transcript completely disabled for {video_id}.")
         return None
     except Exception as e:
         logger.warning(f"Unexpected transcript error for {video_id}: {type(e).__name__} - {e}")
@@ -107,7 +107,10 @@ def main(
     transcript_data = []
     unavailable_transcript_count = 0
 
-    for vid in tqdm(ids_to_fetch, desc="Fetching Transcripts"):
+    total_vids = len(ids_to_fetch)
+    for idx, vid in enumerate(ids_to_fetch, start=1):
+        logger.info(f"Fetching Transcript {idx}/{total_vids} [Video ID: {vid}]")
+
         transcript_text = fetch_video_transcript(vid)
         if transcript_text != "FAILED_FETCH":
             transcript_data.append({"video_id": vid, "transcript": transcript_text})
