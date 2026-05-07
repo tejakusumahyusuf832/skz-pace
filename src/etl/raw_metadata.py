@@ -13,7 +13,6 @@ from googleapiclient.errors import HttpError
 from loguru import logger
 from sqlalchemy import create_engine, text
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
-from tqdm import tqdm
 import typer
 
 from src.db.connection import is_connected_to_db
@@ -232,9 +231,12 @@ def main(
 
     try:
         chunk_size = 50
-        for i in tqdm(
-            range(0, len(all_current_videos), chunk_size), desc="Processing Videos (Batched)"
-        ):
+        total_videos = len(all_current_videos)
+        total_batches = (total_videos + chunk_size - 1) // chunk_size
+
+        for batch_num, i in enumerate(range(0, total_videos, chunk_size), start=1):
+            logger.info(f"Processing Video Batch {batch_num}/{total_batches}...")
+
             batch = all_current_videos[i : i + chunk_size]
             batch_ids = [v["video_id"] for v in batch]
             batch_processed_vids = {v["video_id"]: v["format"] for v in batch}
@@ -281,6 +283,8 @@ def main(
                 batch_processed_vids, old_processed_ids, scraped_at
             )
             fetched_processed_vids.extend(new_processed_vids)
+
+            logger.success(f"Video Batch {batch_num}/{total_batches} completed.")
 
     except Exception as e:
         logger.error(f"Extraction halted: {e}")

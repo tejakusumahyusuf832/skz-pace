@@ -109,7 +109,7 @@ def main(
 
     total_vids = len(ids_to_fetch)
     for idx, vid in enumerate(ids_to_fetch, start=1):
-        logger.info(f"Fetching Transcript {idx}/{total_vids} [Video ID: {vid}]")
+        logger.info(f"Fetching Transcript {idx}/{total_vids}... [Video ID: {vid}]")
 
         transcript_text = fetch_video_transcript(vid)
         if transcript_text != "FAILED_FETCH":
