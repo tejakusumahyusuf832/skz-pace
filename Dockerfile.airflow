@@ -1,0 +1,8 @@
+# 1. Start with your chosen Airflow 3 image
+FROM apache/airflow:3.2.1-python3.12
+
+USER airflow
+
+COPY pyproject.toml .
+
+RUN uv pip install --no-cache "apache-airflow==${AIRFLOW_VERSION}" -r pyproject.toml
