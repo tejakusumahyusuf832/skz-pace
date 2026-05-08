@@ -7,7 +7,7 @@ import pendulum
 @dag(
     dag_id="skz_pace_daily_pipeline",
     # schedule=None,
-    schedule="45 22 * * *",  # Runs every day at 1:00 PM UTC
+    schedule="45 22 * * *",  # Runs every day at 10:45 PM UTC
     start_date=pendulum.datetime(2026, 5, 6, tz="UTC"),
     catchup=True,
     dagrun_timeout=timedelta(hours=12),
