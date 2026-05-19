@@ -6,10 +6,11 @@ import pendulum
 
 @dag(
     dag_id="skz_pace_daily_pipeline",
-    # schedule=None,
-    schedule="45 22 * * *",  # Runs every day at 10:45 PM UTC
+    schedule=None,
+    # schedule="45 1 * * *",  # Runs every day at 1:45 UTC
     start_date=pendulum.datetime(2026, 5, 6, tz="UTC"),
-    catchup=True,
+    # catchup=True,
+    catchup=False,
     dagrun_timeout=timedelta(hours=12),
     tags=["skz_pace", "etl", "daily"],
 )
@@ -76,7 +77,7 @@ def skz_pace_pipeline():
         """
         from src.etl.fetch_transcripts import main
 
-        main(limit=4, uri_key="DOCKER_TRANSFORMED_SKZ_PACE_DB_URL")
+        main(limit=0, uri_key="DOCKER_TRANSFORMED_SKZ_PACE_DB_URL")
 
     # --- ORCHESTRATION / DEPENDENCY MAPPING ---
 
