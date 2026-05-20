@@ -5,20 +5,22 @@ fetching snippets, statistics, and top comments for specified channel playlists.
 """
 
 from datetime import datetime, timezone
+from enum import Enum
 import os
 from typing import List
 
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from loguru import logger
-from sqlalchemy import create_engine, text
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 import typer
 
-from src.db.connection import is_connected_to_db
-from src.db.storage import append_to_db, prune_old_raw_data
-
 app = typer.Typer()
+
+
+class StorageOptions(str, Enum):
+    DATABASE = "database"
+    GDRIVE = "gdrive"
 
 
 def get_youtube_client(api_key: str = "YOUTUBE_API_KEY") -> object:
@@ -39,6 +41,23 @@ def get_youtube_client(api_key: str = "YOUTUBE_API_KEY") -> object:
         logger.error(f"{api_key} environment variable not set.")
         raise ValueError("Missing API Key")
     return build("youtube", "v3", developerKey=API_KEY)
+
+
+def get_old_processed_ids(storage: str = "database", db_uri: str = "DB_URL") -> List[str] | None:
+    if storage == "database":
+        # Import database packages
+        from sqlalchemy import create_engine, text
+
+        # Fetch old processed IDs
+        try:
+            engine = create_engine(db_uri)
+            with engine.connect() as conn:
+                result = conn.execute(text("SELECT video_id FROM processed_vids"))
+                old_processed_ids = [row[0] for row in result]
+            return old_processed_ids
+        except Exception as e:
+            logger.warning(f"Could not read from DB. Error: {e}")
+            return
 
 
 def get_all_video_ids(youtube, playlist_id: str) -> List[str]:
@@ -166,8 +185,30 @@ def get_new_processed_vids(
     return new_processed_vids
 
 
+def store_raw_metadata(
+    fetched_snippets_and_stats: List[dict] = [],
+    fetched_processed_vids: List[dict] = [],
+    fetched_top_comments: List[dict] = [],
+    storage: str = "database",
+    db_uri: str = "DB_URL",
+):
+    if storage == "database":
+        from src.db.storage import append_to_db, prune_old_raw_data
+
+        logger.info("Routing batch results directly to database...")
+        append_to_db(fetched_snippets_and_stats, "snippets_and_stats", db_uri)
+        append_to_db(fetched_processed_vids, "processed_vids", db_uri)
+        append_to_db(fetched_top_comments, "top_comments", db_uri)
+
+        logger.info("Cleaning up old raw data to save cloud storage space...")
+        prune_old_raw_data(db_uri, days_old=7)
+
+
 @app.command()
 def main(
+    storage: str = typer.Option(
+        StorageOptions.DATABASE, help="Storage for the raw metadata. Either 'database' or 'gdrive'"
+    ),
     uri_key: str = typer.Option("URI_KEY", help="The .env key containing the DB URI"),
     api_key: str = typer.Option("API_KEY", help="The .env key containing the API key"),
     channel_id: str = typer.Option(
@@ -181,29 +222,22 @@ def main(
         api_key (str, optional): The YouTube API developer key.
         channel_id (str, optional): The target YouTube channel ID.
     """
-    # Check database connection
-    db_uri_connection = is_connected_to_db(uri_key)
-    if not db_uri_connection:
-        return
+    if storage == "database":
+        from src.db.connection import is_connected_to_db
 
-    db_uri = os.environ.get(uri_key, "")
+        # Check the database connection
+        db_uri_connection = is_connected_to_db(uri_key)
+        if not db_uri_connection:
+            return
 
-    # Authentication
-    try:
-        youtube = get_youtube_client(api_key)
-    except ValueError:
-        return
+        # Get the database URL
+        db_uri = os.environ.get(uri_key, "")
 
-    try:
-        engine = create_engine(db_uri)
-        with engine.connect() as conn:
-            result = conn.execute(text("SELECT video_id FROM processed_vids"))
-            old_processed_ids = [row[0] for row in result]
-    except Exception as e:
-        logger.warning(f"Could not read from DB. Error: {e}")
-        old_processed_ids = []
+    # Fetch old processed IDs
+    old_processed_ids = get_old_processed_ids(storage=storage, db_uri=db_uri)
+    old_processed_ids = [] if not old_processed_ids else old_processed_ids
 
-    # Get all playlist ids
+    # Get all playlist IDs
     base_id = channel_id.replace("UC", "")
     playlists_to_process = {
         "Long-form": f"UULF{base_id}",
@@ -211,7 +245,13 @@ def main(
         "Live/VOD": f"UULV{base_id}",
     }
 
-    # Get all video ids based on the playlist ids
+    # Initialize the Google API client
+    try:
+        youtube = get_youtube_client(api_key)
+    except ValueError:
+        return
+
+    # Get all video IDs based on the playlist IDs
     all_current_videos = []
     for video_format, playlist_id in playlists_to_process.items():
         logger.info(f"Fetching IDs for {video_format} from {playlist_id}...")
@@ -224,7 +264,7 @@ def main(
 
     logger.info(f"Total videos on channel: {len(all_current_videos)}")
 
-    # Fetch the metadata
+    # Fetch the raw metadata
     fetched_snippets_and_stats = []
     fetched_top_comments = []
     fetched_processed_vids = []
@@ -254,7 +294,7 @@ def main(
                 {"scraped_at": scraped_at, "video_response": video_response}
             )
 
-            # Fetch top comments
+            # Fetch top 50 comments for each video
             for vid in batch_ids:
                 try:
                     comment_response = get_top_comments(youtube, vid)
@@ -289,13 +329,13 @@ def main(
     except Exception as e:
         logger.error(f"Extraction halted: {e}")
     finally:
-        logger.info("Routing batch results directly to database...")
-        append_to_db(fetched_snippets_and_stats, "snippets_and_stats", db_uri)
-        append_to_db(fetched_processed_vids, "processed_vids", db_uri)
-        append_to_db(fetched_top_comments, "top_comments", db_uri)
-
-        logger.info("Cleaning up old raw data to save cloud storage space...")
-        prune_old_raw_data(db_uri, days_old=7)
+        store_raw_metadata(
+            fetched_snippets_and_stats=fetched_snippets_and_stats,
+            fetched_processed_vids=fetched_processed_vids,
+            fetched_top_comments=fetched_top_comments,
+            storage=storage,
+            db_uri=db_uri,
+        )
 
 
 if __name__ == "__main__":
