@@ -7,13 +7,18 @@ fetching snippets, statistics, and top comments for specified channel playlists.
 from datetime import datetime, timezone
 from enum import Enum
 import os
-from typing import List
 
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 from loguru import logger
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 import typer
+
+from src.etl.synchronization import (
+    get_old_processed_ids,
+    prepare_authentication,
+    store_raw_metadata,
+)
 
 app = typer.Typer()
 
@@ -43,24 +48,7 @@ def get_youtube_client(api_key: str = "YOUTUBE_API_KEY") -> object:
     return build("youtube", "v3", developerKey=API_KEY)
 
 
-def get_old_processed_ids(storage: str = "database", db_uri: str = "DB_URL") -> List[str] | None:
-    if storage == "database":
-        # Import database packages
-        from sqlalchemy import create_engine, text
-
-        # Fetch old processed IDs
-        try:
-            engine = create_engine(db_uri)
-            with engine.connect() as conn:
-                result = conn.execute(text("SELECT video_id FROM processed_vids"))
-                old_processed_ids = [row[0] for row in result]
-            return old_processed_ids
-        except Exception as e:
-            logger.warning(f"Could not read from DB. Error: {e}")
-            return
-
-
-def get_all_video_ids(youtube, playlist_id: str) -> List[str]:
+def get_all_video_ids(youtube, playlist_id: str) -> list[str]:
     """Fetch all video IDs contained within a specified YouTube playlist.
 
     Args:
@@ -116,7 +104,7 @@ def is_server_error(exception) -> bool:
     stop=stop_after_attempt(4),
     reraise=True,
 )
-def get_snippets_and_stats(youtube, batch_ids: List[str]) -> dict:
+def get_snippets_and_stats(youtube, batch_ids: list[str]) -> dict:
     """Fetch snippet and statistics data for a batch of YouTube videos.
 
     Args:
@@ -159,8 +147,8 @@ def get_top_comments(youtube, video_id: str) -> dict:
 
 
 def get_new_processed_vids(
-    to_processed_vids: dict, old_processed_ids: List[str], scraped_at: str
-) -> List[dict]:
+    to_processed_vids: dict, old_processed_ids: list[str], scraped_at: str
+) -> list[dict]:
     """Filter newly discovered videos against previously processed database IDs.
 
     Args:
@@ -185,31 +173,18 @@ def get_new_processed_vids(
     return new_processed_vids
 
 
-def store_raw_metadata(
-    fetched_snippets_and_stats: List[dict] = [],
-    fetched_processed_vids: List[dict] = [],
-    fetched_top_comments: List[dict] = [],
-    storage: str = "database",
-    db_uri: str = "DB_URL",
-):
-    if storage == "database":
-        from src.db.storage import append_to_db, prune_old_raw_data
-
-        logger.info("Routing batch results directly to database...")
-        append_to_db(fetched_snippets_and_stats, "snippets_and_stats", db_uri)
-        append_to_db(fetched_processed_vids, "processed_vids", db_uri)
-        append_to_db(fetched_top_comments, "top_comments", db_uri)
-
-        logger.info("Cleaning up old raw data to save cloud storage space...")
-        prune_old_raw_data(db_uri, days_old=7)
-
-
 @app.command()
 def main(
-    storage: str = typer.Option(
+    storage_mode: str = typer.Option(
         StorageOptions.DATABASE, help="Storage for the raw metadata. Either 'database' or 'gdrive'"
     ),
-    uri_key: str = typer.Option("URI_KEY", help="The .env key containing the DB URI"),
+    db_uri_key: str = typer.Option("DB_URI", help="The .env key containing the database URI"),
+    gcp_credentials_key: str = typer.Option(
+        "GCP_SA_CREDENTIALS", help="The .env key containing the GCP credentials"
+    ),
+    folder_id_key: str = typer.Option(
+        "DRIVE_FOLDER_ID", help="The .env key containing the Drive folder ID"
+    ),
     api_key: str = typer.Option("API_KEY", help="The .env key containing the API key"),
     channel_id: str = typer.Option(
         "UC9rMiEjNaCSsebs31MRDCRA", help="The channel ID of the specified YouTube channel"
@@ -222,20 +197,23 @@ def main(
         api_key (str, optional): The YouTube API developer key.
         channel_id (str, optional): The target YouTube channel ID.
     """
-    if storage == "database":
-        from src.db.connection import is_connected_to_db
-
-        # Check the database connection
-        db_uri_connection = is_connected_to_db(uri_key)
-        if not db_uri_connection:
+    # Prepare the synchronization process
+    if storage_mode == "database":
+        db_uri = prepare_authentication(storage_mode, db_uri_key=db_uri_key)
+        if not db_uri:
             return
+        # Fetch old processed IDs
+        old_processed_ids = get_old_processed_ids(storage_mode, db_uri=db_uri)
 
-        # Get the database URL
-        db_uri = os.environ.get(uri_key, "")
-
-    # Fetch old processed IDs
-    old_processed_ids = get_old_processed_ids(storage=storage, db_uri=db_uri)
-    old_processed_ids = [] if not old_processed_ids else old_processed_ids
+    else:
+        drive_service, drive_folder_id, processed_state_data = prepare_authentication(
+            gcp_credentials_key=gcp_credentials_key,
+            drive_folder_id_key=folder_id_key,
+        )
+        if not drive_service:
+            return
+        # Fetch old processed IDs
+        old_processed_ids = get_old_processed_ids(processed_state_data=processed_state_data)
 
     # Get all playlist IDs
     base_id = channel_id.replace("UC", "")
@@ -333,8 +311,10 @@ def main(
             fetched_snippets_and_stats=fetched_snippets_and_stats,
             fetched_processed_vids=fetched_processed_vids,
             fetched_top_comments=fetched_top_comments,
-            storage=storage,
-            db_uri=db_uri,
+            storage_mode=storage_mode,
+            db_uri_key=db_uri_key,
+            gcp_credentials_key=gcp_credentials_key,
+            drive_folder_id_key=folder_id_key,
         )
 
 
