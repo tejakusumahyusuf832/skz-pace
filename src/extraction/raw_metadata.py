@@ -321,7 +321,7 @@ def main(
                 fetched_processed_vids,
                 fetched_top_comments,
                 "gdrive",
-                drive_service=drive_service,
+                gcp_credentials_key=gcp_credentials_key,
                 folder_id=drive_folder_id,
             )
 

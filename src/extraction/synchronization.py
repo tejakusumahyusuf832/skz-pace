@@ -4,6 +4,8 @@ from typing import Any
 
 from loguru import logger
 
+from src.load.gdrive.authentication import get_drive_service
+
 
 def prepare_authentication(
     storage_mode: str = "gdrive",
@@ -28,7 +30,7 @@ def prepare_authentication(
         from src.load.gdrive.storage import load_file
 
         # Initialize Drive service
-        drive_service = get_drive_service(gcp_creds=gcp_credentials_key)
+        drive_service = get_drive_service(gcp_credentials_key)
         folder_id = os.environ.get(drive_folder_id_key, "")
         state_filename = "processed_vids.jsonl"
 
@@ -75,7 +77,7 @@ def store_raw_metadata(
     storage_mode: str,
     *,
     db_uri: str | None = None,
-    drive_service: Any | None = None,
+    gcp_credentials_key: str | None = None,
     folder_id: str | None = None,
 ):
     if storage_mode == "database":
@@ -93,9 +95,9 @@ def store_raw_metadata(
         prune_old_raw_data(db_uri, days_old=7)
 
     elif storage_mode == "gdrive":
-        if drive_service is None or folder_id is None:
+        if gcp_credentials_key is None or folder_id is None:
             raise ValueError(
-                "drive_service and folder_id are required when storage_mode is 'gdrive'"
+                "gcp_credentials_key and folder_id are required when storage_mode is 'gdrive'"
             )
 
         from src.load.gdrive.storage import save_to_drive_jsonl
@@ -103,9 +105,11 @@ def store_raw_metadata(
         logger.info("Routing batch results to Google Drive...")
 
         date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        drive_service = get_drive_service(gcp_credentials_key)
+
         save_to_drive_jsonl(
             drive_service,
-            fetched_snippets_and_stats,
+            fetched_processed_vids,
             "processed_vids.jsonl",
             folder_id,
         )
@@ -117,7 +121,7 @@ def store_raw_metadata(
         )
         save_to_drive_jsonl(
             drive_service,
-            fetched_snippets_and_stats,
+            fetched_top_comments,
             f"top_comments_{date_str}.jsonl",
             folder_id,
         )
