@@ -11,8 +11,8 @@ from loguru import logger
 from sqlalchemy import create_engine, text
 import typer
 
-from src.db.connection import is_connected_to_db
-from src.db.storage import append_to_db
+from src.load.db.connection import is_connected_to_db
+from src.load.db.storage import append_to_db
 
 app = typer.Typer()
 

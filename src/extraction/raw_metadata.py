@@ -14,7 +14,7 @@ from loguru import logger
 from tenacity import retry, retry_if_exception, stop_after_attempt, wait_exponential
 import typer
 
-from src.etl.synchronization import (
+from src.extraction.synchronization import (
     get_old_processed_ids,
     prepare_authentication,
     store_raw_metadata,
@@ -28,7 +28,7 @@ class StorageOptions(str, Enum):
     GDRIVE = "gdrive"
 
 
-def get_youtube_client(api_key: str = "YOUTUBE_API_KEY") -> object:
+def get_youtube_client(api_key: str) -> object:
     """Initialize and return the Google API client for YouTube v3.
 
     Args:
@@ -185,7 +185,7 @@ def main(
     folder_id_key: str = typer.Option(
         "DRIVE_FOLDER_ID", help="The .env key containing the Drive folder ID"
     ),
-    api_key: str = typer.Option("API_KEY", help="The .env key containing the API key"),
+    api_key: str = typer.Option("YOUTUBE_API_KEY", help="The .env key containing the API key"),
     channel_id: str = typer.Option(
         "UC9rMiEjNaCSsebs31MRDCRA", help="The channel ID of the specified YouTube channel"
     ),
@@ -307,15 +307,23 @@ def main(
     except Exception as e:
         logger.error(f"Extraction halted: {e}")
     finally:
-        store_raw_metadata(
-            fetched_snippets_and_stats=fetched_snippets_and_stats,
-            fetched_processed_vids=fetched_processed_vids,
-            fetched_top_comments=fetched_top_comments,
-            storage_mode=storage_mode,
-            db_uri_key=db_uri_key,
-            gcp_credentials_key=gcp_credentials_key,
-            drive_folder_id_key=folder_id_key,
-        )
+        if storage_mode == "database":
+            store_raw_metadata(
+                fetched_snippets_and_stats,
+                fetched_processed_vids,
+                fetched_top_comments,
+                "database",
+                db_uri=db_uri,
+            )
+        else:
+            store_raw_metadata(
+                fetched_snippets_and_stats,
+                fetched_processed_vids,
+                fetched_top_comments,
+                "gdrive",
+                drive_service=drive_service,
+                folder_id=drive_folder_id,
+            )
 
 
 if __name__ == "__main__":

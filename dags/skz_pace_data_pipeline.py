@@ -42,7 +42,7 @@ def skz_pace_pipeline():
         Pulls unprocessed JSON blobs from the cloud data lake, flattens the metadata
         into tabular records, and performs upserts into the transformed schema.
         """
-        from src.etl.fetch_snippets import main
+        from src.transformation.fetch_snippets import main
 
         main(uri_key_start="RAW_SKZ_PACE_DB_URL", uri_key_end="DOCKER_TRANSFORMED_SKZ_PACE_DB_URL")
 
@@ -53,7 +53,7 @@ def skz_pace_pipeline():
         Extracts batched JSON responses from the cloud raw data lake, isolates daily
         time-series statistics (views, likes, comments), and writes them to the local schema.
         """
-        from src.etl.fetch_stats import main
+        from src.transformation.fetch_stats import main
 
         main(uri_key_start="RAW_SKZ_PACE_DB_URL", uri_key_end="DOCKER_TRANSFORMED_SKZ_PACE_DB_URL")
 
@@ -64,7 +64,7 @@ def skz_pace_pipeline():
         Extracts unstructured text data from the raw data lake, isolates text bodies
         and authorship details, and formats them for downstream NLP and sentiment analysis.
         """
-        from src.etl.fetch_top_comments import main
+        from src.transformation.fetch_top_comments import main
 
         main(uri_key_start="RAW_SKZ_PACE_DB_URL", uri_key_end="DOCKER_TRANSFORMED_SKZ_PACE_DB_URL")
 
@@ -75,7 +75,7 @@ def skz_pace_pipeline():
         Fetches specific long-form video transcripts via an undocumented YouTube API
         and incorporates sleep jitter to prevent automated connection blocking.
         """
-        from src.etl.fetch_transcripts import main
+        from src.transformation.fetch_transcripts import main
 
         main(limit=0, uri_key="DOCKER_TRANSFORMED_SKZ_PACE_DB_URL")
 

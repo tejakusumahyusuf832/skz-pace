@@ -13,8 +13,8 @@ from sqlalchemy import create_engine, text
 import typer
 from youtube_transcript_api import NoTranscriptFound, TranscriptsDisabled, YouTubeTranscriptApi
 
-from src.db.connection import is_connected_to_db
-from src.db.storage import append_to_db
+from src.load.db.connection import is_connected_to_db
+from src.load.db.storage import append_to_db
 
 app = typer.Typer()
 

@@ -13,7 +13,7 @@ def prepare_authentication(
     drive_folder_id_key: str = "DRIVE_FOLDER_ID",
 ) -> Any:
     if storage_mode == "database":
-        from src.db.connection import is_connected_to_db
+        from src.load.db.connection import is_connected_to_db
 
         # Check the database connection
         db_uri_connection = is_connected_to_db(db_uri_key)
@@ -24,13 +24,13 @@ def prepare_authentication(
         return os.environ.get(db_uri_key, "")
 
     else:
-        from src.gdrive.authentication import get_drive_service
-        from src.gdrive.storage import load_file
+        from src.load.gdrive.authentication import get_drive_service
+        from src.load.gdrive.storage import load_file
 
         # Initialize Drive service
         drive_service = get_drive_service(gcp_creds=gcp_credentials_key)
         folder_id = os.environ.get(drive_folder_id_key, "")
-        state_filename = "processed_vids.json"
+        state_filename = "processed_vids.jsonl"
 
         # Load processed state data from Drive
         try:
@@ -69,19 +69,20 @@ def get_old_processed_ids(
 
 
 def store_raw_metadata(
-    fetched_snippets_and_stats: list[dict] = [],
-    fetched_processed_vids: list[dict] = [],
-    fetched_top_comments: list[dict] = [],
-    storage_mode: str = "gdrive",
-    db_uri_key: str = "DB_URI_KEY",
-    gcp_credentials_key: str = "GCP_SA_CREDENTIALS",
-    drive_folder_id_key: str = "DRIVE_FOLDER_ID",
+    fetched_snippets_and_stats: list[dict],
+    fetched_processed_vids: list[dict],
+    fetched_top_comments: list[dict],
+    storage_mode: str,
+    *,
+    db_uri: str | None = None,
+    drive_service: Any | None = None,
+    folder_id: str | None = None,
 ):
     if storage_mode == "database":
-        from src.db.storage import append_to_db, prune_old_raw_data
+        if db_uri is None:
+            raise ValueError("db_uri is required when storage_mode is 'database'")
 
-        # Get the database URL
-        db_uri = os.environ.get(db_uri_key, "")
+        from src.load.db.storage import append_to_db, prune_old_raw_data
 
         logger.info("Routing batch results directly to database...")
         append_to_db(fetched_snippets_and_stats, "snippets_and_stats", db_uri)
@@ -91,21 +92,35 @@ def store_raw_metadata(
         logger.info("Cleaning up old raw data to save cloud storage space...")
         prune_old_raw_data(db_uri, days_old=7)
 
-    else:
-        from src.gdrive.storage import save_processed_state, upload_json_to_drive
+    elif storage_mode == "gdrive":
+        if drive_service is None or folder_id is None:
+            raise ValueError(
+                "drive_service and folder_id are required when storage_mode is 'gdrive'"
+            )
+
+        from src.load.gdrive.storage import save_to_drive_jsonl
 
         logger.info("Routing batch results to Google Drive...")
-        folder_id = os.environ.get(drive_folder_id_key, "")
 
-        # 1. Upload your daily raw data payloads (using the upload function from the previous step)
         date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        upload_json_to_drive(
-            fetched_snippets_and_stats, f"snippets_and_stats_{date_str}.json", folder_id
+        save_to_drive_jsonl(
+            drive_service,
+            fetched_snippets_and_stats,
+            "processed_vids.jsonl",
+            folder_id,
         )
-        upload_json_to_drive(fetched_top_comments, f"top_comments_{date_str}.json", folder_id)
+        save_to_drive_jsonl(
+            drive_service,
+            fetched_snippets_and_stats,
+            f"snippets_and_stats_{date_str}.jsonl",
+            folder_id,
+        )
+        save_to_drive_jsonl(
+            drive_service,
+            fetched_snippets_and_stats,
+            f"top_comments_{date_str}.jsonl",
+            folder_id,
+        )
 
-        # 2. Update and save the cumulative state file
-        if fetched_processed_vids:
-            logger.info("Updating processed videos state file...")
-            updated_state = processed_state_data + fetched_processed_vids
-            save_processed_state(drive_service, updated_state, state_filename, folder_id)
+    else:
+        raise ValueError(f"Unsupported storage_mode: {storage_mode}")
