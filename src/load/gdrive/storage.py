@@ -1,6 +1,7 @@
 import io
 import json
 import os
+import tempfile
 from typing import Any
 
 from googleapiclient.http import MediaFileUpload, MediaIoBaseDownload
@@ -47,7 +48,8 @@ def load_file(service: Any, filename: str, folder_id: str) -> list:
 
 def save_to_drive_jsonl(service: Any, new_data: list, filename: str, folder_id: str) -> None:
     file_id = get_file_id_by_name(service, filename, folder_id)
-    local_path = f"/tmp/{filename}"
+    temp_dir = tempfile.gettempdir()
+    local_path = os.path.join(temp_dir, filename)
 
     # Stream the download DIRECTLY to disk (Zero RAM parsing)
     if file_id:
