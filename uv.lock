@@ -1009,6 +1009,7 @@ source = { editable = "." }
 dependencies = [
     { name = "connectorx" },
     { name = "google-api-python-client" },
+    { name = "google-auth" },
     { name = "loguru" },
     { name = "mkdocs" },
     { name = "numpy" },
@@ -1035,6 +1036,7 @@ dev = [
 requires-dist = [
     { name = "connectorx", specifier = ">=0.4.5" },
     { name = "google-api-python-client", specifier = ">=2.192.0" },
+    { name = "google-auth", specifier = ">=2.49.1" },
     { name = "loguru", specifier = ">=0.7.3" },
     { name = "mkdocs", specifier = ">=1.6.1" },
     { name = "numpy", specifier = ">=2.4.4" },
