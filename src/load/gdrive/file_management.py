@@ -17,36 +17,55 @@ def get_file_id_by_name(service: Any, filename: str, folder_id: str) -> str | No
     return items[0]["id"] if items else None
 
 
-def load_file(service: Any, filename: str, folder_id: str) -> list:
-    """
-    Load a file from Drive as a list of dictionaries, or
-    return an empty list if it doesn't exist.
-    """
-    file_id = get_file_id_by_name(service, filename, folder_id)
-
-    if not file_id:
-        logger.info(f"No existing {filename} found. Starting fresh.")
-        return []
-
-    logger.info(f"Downloading existing state from {filename}...")
+def _download_file(service, file_path, file_id):
     request = service.files().get_media(fileId=file_id)
-    file_stream = io.BytesIO()
+    file_stream = io.FileIO(file_path, "wb")
     downloader = MediaIoBaseDownload(file_stream, request)
-
     done = False
     while not done:
         status, done = downloader.next_chunk()
-
-    file_stream.seek(0)
-    processed_data = []
-    for line in file_stream:
-        if line.strip():  # Skip empty lines
-            processed_data.append(json.loads(line.decode("utf-8")))
-
-    return processed_data
+        logger.info(f"Download {int(status.progress() * 100)}%.")
+    file_stream.close()
 
 
-def save_to_drive_jsonl(service: Any, new_data: list, filename: str, folder_id: str) -> None:
+def load_jsonl_file(
+    service,
+    *,
+    filename: str,
+    folder_id: str,
+    desired_keys: None | str | list = None,
+) -> list:
+    file_id = get_file_id_by_name(service, filename, folder_id)
+
+    if not file_id:
+        logger.info(f"No existing {filename} found. Returning an empty list...")
+        return []
+
+    jsonl_data = []
+    with tempfile.TemporaryDirectory() as temp_dir:
+        local_path = os.path.join(temp_dir, filename)
+        _download_file(service, local_path, file_id)
+
+        with open(local_path, "r") as file:
+            if isinstance(desired_keys, str):
+                for line in file:
+                    record = json.loads(line)
+                    filtered_record = record.get(desired_keys)
+                    jsonl_data.append(filtered_record)
+            elif isinstance(desired_keys, list):
+                for line in file:
+                    record = json.loads(line)
+                    filtered_record = {key: record.get(key) for key in desired_keys}
+                    jsonl_data.append(filtered_record)
+            elif not desired_keys:
+                for line in file:
+                    record = json.loads(line)
+                    jsonl_data.append(record)
+
+    return jsonl_data
+
+
+def save_to_drive_jsonl(service: Any, folder_id: str, *, new_data: list, filename: str):
     file_id = get_file_id_by_name(service, filename, folder_id)
     temp_dir = tempfile.gettempdir()
     local_path = os.path.join(temp_dir, filename)
