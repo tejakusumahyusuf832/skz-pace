@@ -8,7 +8,7 @@ from loguru import logger
 
 
 def get_drive_service(
-    gcp_credentials_key: str = "GCP_SA_CREDENTIALS", *, return_bool: bool = False
+    gcp_credentials_key: str = "GCP_CREDENTIALS"
 ) -> Any:
     """Authenticate and return the Google Drive API service."""
     # Load credentials from the environment variable
@@ -16,7 +16,7 @@ def get_drive_service(
 
     if not creds_json:
         logger.error(f"Missing '{gcp_credentials_key}' key from environment.")
-        return False if return_bool else None
+        return
 
     creds_dict = json.loads(creds_json)
     credentials = service_account.Credentials.from_service_account_info(

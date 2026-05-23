@@ -11,7 +11,7 @@ def prepare_authentication(
     storage_mode: str = "gdrive",
     *,
     db_uri_key: str = "DB_URI",
-    gcp_credentials_key: str = "GCP_SA_CREDENTIALS",
+    gcp_credentials_key: str = "GCP_CREDENTIALS",
     drive_folder_id_key: str = "DRIVE_FOLDER_ID",
 ) -> Any:
     if storage_mode == "database":
@@ -27,17 +27,16 @@ def prepare_authentication(
 
     else:
         from src.load.gdrive.authentication import get_drive_service
-        from src.load.gdrive.storage import load_file
+        from src.load.gdrive.file_management import load_jsonl_file
 
         # Initialize Drive service
         drive_service = get_drive_service(gcp_credentials_key)
         folder_id = os.environ.get(drive_folder_id_key, "")
-        state_filename = "processed_vids.jsonl"
 
         # Load processed state data from Drive
         try:
-            processed_state_data = load_file(
-                service=drive_service, filename=state_filename, folder_id=folder_id
+            processed_state_data = load_jsonl_file(
+                drive_service, filename="processed_vids.jsonl", folder_id=folder_id
             )
             return drive_service, folder_id, processed_state_data
         except Exception as e:
@@ -100,7 +99,7 @@ def store_raw_metadata(
                 "gcp_credentials_key and folder_id are required when storage_mode is 'gdrive'"
             )
 
-        from src.load.gdrive.storage import save_to_drive_jsonl
+        from src.load.gdrive.file_management import save_to_drive_jsonl
 
         logger.info("Routing batch results to Google Drive...")
 
