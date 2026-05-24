@@ -1,10 +1,7 @@
-from datetime import datetime, timezone
 import os
 from typing import Any
 
 from loguru import logger
-
-from src.load.gdrive.authentication import get_drive_service
 
 
 def prepare_authentication(
@@ -15,48 +12,39 @@ def prepare_authentication(
     drive_folder_id_key: str = "DRIVE_FOLDER_ID",
 ) -> Any:
     if storage_mode == "database":
+        # --- LOCAL IMPORTS ---
         from src.load.db.connection import is_connected_to_db
 
         # Check the database connection
-        db_uri_connection = is_connected_to_db(db_uri_key)
-        if not db_uri_connection:
-            return None
-
-        # Get the database URL
-        return os.environ.get(db_uri_key, "")
+        db_status, db_engine = is_connected_to_db(db_uri_key)
+        return db_engine if db_status else None
 
     else:
+        # --- LOCAL IMPORTS ---
         from src.load.gdrive.authentication import get_drive_service
-        from src.load.gdrive.file_management import load_jsonl_file
 
         # Initialize Drive service
         drive_service = get_drive_service(gcp_credentials_key)
         folder_id = os.environ.get(drive_folder_id_key, "")
-
-        # Load processed state data from Drive
-        try:
-            processed_state_data = load_jsonl_file(
-                drive_service, filename="processed_vids.jsonl", folder_id=folder_id
-            )
-            return drive_service, folder_id, processed_state_data
-        except Exception as e:
-            logger.warning(f"Could not read state from Drive. Error: {e}")
-            return drive_service, folder_id, []
+        return drive_service, folder_id
 
 
 def get_old_processed_ids(
     storage_mode: str = "gdrive",
-    db_uri: str = "DB_URI",
-    processed_state_data: list = [],
+    *,
+    db_engine: Any = None,
+    drive_service: Any = None,
+    folder_id: str | None = None,
 ) -> list[str] | list:
     if storage_mode == "database":
-        # Import database packages
-        from sqlalchemy import create_engine, text
+        if db_engine is None:
+            raise ValueError("db_engine is required when storage_mode is 'database'")
 
-        # Fetch old processed IDs
+        # --- LOCAL IMPORTS ---
+        from sqlalchemy import text
+
         try:
-            engine = create_engine(db_uri)
-            with engine.connect() as conn:
+            with db_engine.connect() as conn:
                 result = conn.execute(text("SELECT video_id FROM processed_vids"))
                 old_processed_ids = [row[0] for row in result]
             return old_processed_ids
@@ -65,7 +53,20 @@ def get_old_processed_ids(
             return []
 
     else:
-        old_processed_ids = [item["video_id"] for item in processed_state_data]
+        if drive_service is None or folder_id is None:
+            raise ValueError(
+                "drive_service and folder_id are required when storage_mode is 'gdrive'"
+            )
+
+        # # --- LOCAL IMPORTS ---
+        from src.load.gdrive.file_management import load_jsonl_file
+
+        old_processed_ids = load_jsonl_file(
+            drive_service,
+            filename="processed_vids.jsonl",
+            folder_id=folder_id,
+            desired_keys="video_id",
+        )
         return old_processed_ids
 
 
@@ -75,54 +76,53 @@ def store_raw_metadata(
     fetched_top_comments: list[dict],
     storage_mode: str,
     *,
-    db_uri: str | None = None,
-    gcp_credentials_key: str | None = None,
+    db_engine: Any = None,
+    drive_service: Any = None,
     folder_id: str | None = None,
 ):
     if storage_mode == "database":
-        if db_uri is None:
-            raise ValueError("db_uri is required when storage_mode is 'database'")
+        if db_engine is None:
+            raise ValueError("db_engine is required when storage_mode is 'database'")
 
+        # --- LOCAL IMPORTS ---
         from src.load.db.storage import append_to_db, prune_old_raw_data
 
         logger.info("Routing batch results directly to database...")
-        append_to_db(fetched_snippets_and_stats, "snippets_and_stats", db_uri)
-        append_to_db(fetched_processed_vids, "processed_vids", db_uri)
-        append_to_db(fetched_top_comments, "top_comments", db_uri)
+        append_to_db(fetched_snippets_and_stats, "snippets_and_stats", db_engine)
+        append_to_db(fetched_processed_vids, "processed_vids", db_engine)
+        append_to_db(fetched_top_comments, "top_comments", db_engine)
 
         logger.info("Cleaning up old raw data to save cloud storage space...")
-        prune_old_raw_data(db_uri, days_old=7)
+        prune_old_raw_data(db_engine, days_old=7)
 
     elif storage_mode == "gdrive":
-        if gcp_credentials_key is None or folder_id is None:
+        if drive_service is None or folder_id is None:
             raise ValueError(
-                "gcp_credentials_key and folder_id are required when storage_mode is 'gdrive'"
+                "drive_service and folder_id are required when storage_mode is 'gdrive'"
             )
 
-        from src.load.gdrive.file_management import save_to_drive_jsonl
+        # --- LOCAL IMPORTS ---
+        from src.load.gdrive.file_management import update_to_drive_jsonl
 
         logger.info("Routing batch results to Google Drive...")
 
-        date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        drive_service = get_drive_service(gcp_credentials_key)
-
-        save_to_drive_jsonl(
+        update_to_drive_jsonl(
             drive_service,
-            fetched_processed_vids,
-            "processed_vids.jsonl",
             folder_id,
+            new_data=fetched_processed_vids,
+            filename="processed_vids.jsonl",
         )
-        save_to_drive_jsonl(
+        update_to_drive_jsonl(
             drive_service,
-            fetched_snippets_and_stats,
-            f"snippets_and_stats_{date_str}.jsonl",
             folder_id,
+            new_data=fetched_snippets_and_stats,
+            filename="snippets_and_stats.jsonl",
         )
-        save_to_drive_jsonl(
+        update_to_drive_jsonl(
             drive_service,
-            fetched_top_comments,
-            f"top_comments_{date_str}.jsonl",
             folder_id,
+            new_data=fetched_top_comments,
+            filename="top_comments.jsonl",
         )
 
     else:

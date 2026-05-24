@@ -176,11 +176,11 @@ def get_new_processed_vids(
 @app.command()
 def main(
     storage_mode: str = typer.Option(
-        StorageOptions.DATABASE, help="Storage for the raw metadata. Either 'database' or 'gdrive'"
+        StorageOptions.GDRIVE, help="Storage for the raw metadata. Either 'database' or 'gdrive'"
     ),
     db_uri_key: str = typer.Option("DB_URI", help="The .env key containing the database URI"),
     gcp_credentials_key: str = typer.Option(
-        "GCP_SA_CREDENTIALS", help="The .env key containing the GCP credentials"
+        "GCP_CREDENTIALS", help="The .env key containing the GCP credentials"
     ),
     folder_id_key: str = typer.Option(
         "DRIVE_FOLDER_ID", help="The .env key containing the Drive folder ID"
@@ -199,21 +199,21 @@ def main(
     """
     # Prepare the synchronization process
     if storage_mode == "database":
-        db_uri = prepare_authentication(storage_mode, db_uri_key=db_uri_key)
-        if not db_uri:
+        db_engine = prepare_authentication(storage_mode, db_uri_key=db_uri_key)
+        if not db_engine:
             return
-        # Fetch old processed IDs
-        old_processed_ids = get_old_processed_ids(storage_mode, db_uri=db_uri)
+        old_processed_ids = get_old_processed_ids(storage_mode, db_engine=db_engine)
 
     else:
-        drive_service, drive_folder_id, processed_state_data = prepare_authentication(
+        drive_service, drive_folder_id = prepare_authentication(
             gcp_credentials_key=gcp_credentials_key,
             drive_folder_id_key=folder_id_key,
         )
         if not drive_service:
             return
-        # Fetch old processed IDs
-        old_processed_ids = get_old_processed_ids(processed_state_data=processed_state_data)
+        old_processed_ids = get_old_processed_ids(
+            drive_service=drive_service, folder_id=drive_folder_id
+        )
 
     # Get all playlist IDs
     base_id = channel_id.replace("UC", "")
@@ -313,7 +313,7 @@ def main(
                 fetched_processed_vids,
                 fetched_top_comments,
                 "database",
-                db_uri=db_uri,
+                db_engine=db_engine,
             )
         else:
             store_raw_metadata(
@@ -321,7 +321,7 @@ def main(
                 fetched_processed_vids,
                 fetched_top_comments,
                 "gdrive",
-                gcp_credentials_key=gcp_credentials_key,
+                drive_service=drive_service,
                 folder_id=drive_folder_id,
             )
 
