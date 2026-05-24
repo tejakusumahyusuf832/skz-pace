@@ -5,23 +5,13 @@ for complex objects, and pruning old data to maintain storage efficiency.
 """
 
 import json
-from typing import List
+from typing import Any, List
 
 from loguru import logger
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
 
-def append_to_db(data_list: List[dict], table_name: str, db_uri: str) -> None:
-    """Insert a list of dictionary records into a specified database table.
-
-    Automatically serializes nested lists and dictionaries into JSON strings
-    prior to insertion to align with PostgreSQL JSONB column requirements.
-
-    Args:
-        data_list (List[dict]): The records to insert, represented as dictionaries.
-        table_name (str): The target database table name.
-        db_uri (str): The connection string for the target database.
-    """
+def append_to_db(data_list: List[dict], table_name: str, engine: Any) -> None:
     if not data_list:
         logger.info(f"No records provided for {table_name}. Skipping DB load.")
         return
@@ -31,8 +21,6 @@ def append_to_db(data_list: List[dict], table_name: str, db_uri: str) -> None:
         for key, value in row.items():
             if isinstance(value, dict) or isinstance(value, list):
                 row[key] = json.dumps(value)
-
-    engine = create_engine(db_uri)
 
     columns = ", ".join(data_list[0].keys())
     binds = ", ".join([f":{k}" for k in data_list[0].keys()])
@@ -49,16 +37,7 @@ def append_to_db(data_list: List[dict], table_name: str, db_uri: str) -> None:
         logger.error(f"Database append failed for {table_name}: {e}")
 
 
-def prune_old_raw_data(db_uri: str, days_old: int = 7) -> None:
-    """Delete raw JSON data older than a specified threshold to free up cloud storage.
-
-    Args:
-        db_uri (str): The connection string for the database to prune.
-        days_old (int, optional): The age threshold in days for record deletion.
-            Defaults to 7.
-    """
-    engine = create_engine(db_uri)
-
+def prune_old_raw_data(engine: Any, days_old: int = 7) -> None:
     queries = {
         "snippets_and_stats": text(
             f"DELETE FROM snippets_and_stats WHERE scraped_at < NOW() - INTERVAL '{days_old} days'"
