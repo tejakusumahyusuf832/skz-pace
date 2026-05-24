@@ -104,12 +104,13 @@ def main(
     if not (is_connected_to_db(uri_key_start) and is_connected_to_db(uri_key_end)):
         return
 
+    # prepare_authentication()
     db_uri_start = os.environ.get(uri_key_start, "")
     db_uri_end = os.environ.get(uri_key_end, "")
     engine_start = create_engine(db_uri_start)
     engine_end = create_engine(db_uri_end)
 
-    # Get the High-Water Mark to avoid pulling the entire cloud database every time
+    # get_last_scraped_at()
     try:
         with engine_end.connect() as conn:
             result = conn.execute(text("SELECT MAX(scraped_at) FROM skz_snippets"))
@@ -118,13 +119,14 @@ def main(
         logger.warning(f"Could not read from local DB (table might be empty): {e}")
         last_scraped_at = None
 
-    # Fetch format mapping from Neon DB
+    # get_formats_map()
     formats_map = {}
     with engine_start.connect() as conn:
         result = conn.execute(text("SELECT video_id, video_format FROM processed_vids"))
         for row in result:
             formats_map[row[0]] = row[1]
 
+    # get_new_raw_results()
     # Fetch NEW data from Neon DB
     query = "SELECT scraped_at, video_response FROM snippets_and_stats"
     if last_scraped_at:
@@ -138,6 +140,7 @@ def main(
     if not raw_results:
         logger.info("No new snippets to process.")
         return
+    # ---
 
     # Transform and Upsert
     logger.info(f"Transforming {len(raw_results)} new batches...")
