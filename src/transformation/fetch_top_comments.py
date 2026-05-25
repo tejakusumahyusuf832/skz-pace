@@ -4,17 +4,62 @@ Extracts unstructured text data from the raw data lake, isolates text bodies
 and authorship details, and formats them for downstream NLP and sentiment analysis.
 """
 
+from enum import Enum
 import os
 from typing import Any, Sequence
 
 from loguru import logger
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 import typer
 
 from src.load.db.connection import is_connected_to_db
 from src.load.db.storage import append_to_db
 
 app = typer.Typer()
+
+
+class StorageOptions(str, Enum):
+    DATABASE = "DATABASE"
+    GDRIVE = "GDRIVE"
+
+
+def get_new_top_comments(
+    storage_mode,
+    last_scraped_at,
+    *,
+    engine: Any = None,
+    service: Any = None,
+    folder_id: str = "FOLDER_ID",
+):
+    if storage_mode == "DATABASE":
+        if engine is None:
+            raise ValueError("engine is required when storage_mode is 'DATABASE'")
+
+        query = "SELECT video_id, scraped_at, comment_response FROM top_comments"
+        if last_scraped_at:
+            query += f" WHERE scraped_at > '{last_scraped_at}'"
+        query += " ORDER BY scraped_at ASC"
+
+        with engine.connect() as conn:
+            logger.info("Fetching new comments data from raw database...")
+            raw_results = conn.execute(text(query)).mappings().all()
+
+    else:
+        if service is None or folder_id is None:
+            raise ValueError("service and folder_id are required when storage_mode is 'GDRIVE'")
+
+        from src.load.gdrive.file_management import load_jsonl_file
+
+        logger.info("Fetching new comments data from raw database...")
+        raw_results = load_jsonl_file(
+            service,
+            filename="top_comments.jsonl",
+            folder_id=folder_id,
+            desired_keys=["video_id", "scraped_at", "comment_response"],
+            filter_date_scraped=last_scraped_at,
+        )
+
+    return raw_results
 
 
 def process_comments(raw_data: Sequence[Any]) -> list:
@@ -52,47 +97,62 @@ def process_comments(raw_data: Sequence[Any]) -> list:
 
 @app.command()
 def main(
+    storage_mode_start: str = typer.Option(
+        StorageOptions.GDRIVE,
+        help="Storage for the initial metadata storage. Either 'DATABASE' or 'GDRIVE'",
+    ),
     uri_key_start: str = typer.Option("URI_KEY_START", help="DB URI key containing the raw data"),
     uri_key_end: str = typer.Option(
         "URI_KEY_END", help="DB URI key containing the transformed data"
     ),
+    gcp_credentials_key: str = typer.Option(
+        "GCP_CREDENTIALS", help="The .env key containing the GCP credentials"
+    ),
+    folder_id_key: str = typer.Option(
+        "DRIVE_FOLDER_ID", help="The .env key containing the Drive folder ID"
+    ),
 ) -> None:
-    """Execute the extraction, transformation, and load process for top comments.
+    # Prepare authentication
+    if storage_mode_start == "DATABASE":
+        status, engine_start = is_connected_to_db(uri_key_start)
+        if not status:
+            return
+    else:
+        from src.load.gdrive.authentication import get_drive_service
 
-    Args:
-        uri_key_start (str, optional): The origin database connection key.
-        uri_key_end (str, optional): The destination database connection key.
-    """
-    if not (is_connected_to_db(uri_key_start) and is_connected_to_db(uri_key_end)):
+        drive_folder_id = os.environ.get(folder_id_key, "")
+        drive_service = get_drive_service(gcp_credentials_key)
+        if not drive_folder_id or not drive_service:
+            return
+
+    # Connect to the database destination
+    status, engine_end = is_connected_to_db(uri_key_end)
+    if not status:
         return
 
-    db_uri_start = os.environ.get(uri_key_start, "")
-    db_uri_end = os.environ.get(uri_key_end, "")
-    engine_start = create_engine(db_uri_start)
-    engine_end = create_engine(db_uri_end)
-
+    # Get the last scraped date
     try:
         with engine_end.connect() as conn:
             result = conn.execute(text("SELECT MAX(scraped_at) FROM skz_top_comments"))
             last_scraped_at = result.scalar()
-    except Exception:
+    except Exception as e:
+        logger.warning(f"Could not read from local DB (table might be empty): {e}")
         last_scraped_at = None
 
-    query = "SELECT video_id, scraped_at, comment_response FROM top_comments"
-    if last_scraped_at:
-        query += f" WHERE scraped_at > '{last_scraped_at}'"
-    query += " ORDER BY scraped_at ASC"
-
-    with engine_start.connect() as conn:
-        logger.info("Fetching new comments data from raw database...")
-        raw_results = conn.execute(text(query)).mappings().all()
+    # Get raw, new snippets
+    if storage_mode_start == "DATABASE":
+        raw_results = get_new_top_comments("DATABASE", last_scraped_at, engine=engine_start)
+    else:
+        raw_results = get_new_top_comments(
+            "GDRIVE", last_scraped_at, service=drive_service, folder_id=drive_folder_id
+        )
 
     if not raw_results:
         logger.info("No new comments to process.")
         return
 
     transformed_data = process_comments(raw_results)
-    append_to_db(transformed_data, "skz_top_comments", db_uri_end)
+    append_to_db(transformed_data, "skz_top_comments", engine_end)
 
 
 if __name__ == "__main__":

@@ -4,11 +4,12 @@ Pulls unprocessed JSON blobs from the cloud data lake, flattens the metadata
 into tabular records, and performs upserts into the transformed schema.
 """
 
+from enum import Enum
 import os
 from typing import Any, Sequence
 
 from loguru import logger
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 import typer
 
 from src.load.db.connection import is_connected_to_db
@@ -16,7 +17,66 @@ from src.load.db.connection import is_connected_to_db
 app = typer.Typer()
 
 
-def upsert_snippets(data_list: list, db_uri: str) -> None:
+class StorageOptions(str, Enum):
+    DATABASE = "DATABASE"
+    GDRIVE = "GDRIVE"
+
+
+def get_new_snippets(
+    storage_mode,
+    last_scraped_at,
+    *,
+    engine: Any = None,
+    service: Any = None,
+    folder_id: str = "FOLDER_ID",
+) -> tuple:
+    formats_map = {}
+    if storage_mode == "DATABASE":
+        if engine is None:
+            raise ValueError("engine is required when storage_mode is 'DATABASE'")
+        with engine.connect() as conn:
+            result = conn.execute(text("SELECT video_id, video_format FROM processed_vids"))
+            for row in result:
+                formats_map[row[0]] = row[1]
+
+        query = "SELECT scraped_at, video_response FROM snippets_and_stats"
+        if last_scraped_at:
+            query += f" WHERE scraped_at > '{last_scraped_at}'"
+        query += " ORDER BY scraped_at ASC"
+
+        with engine.connect() as conn:
+            logger.info("Fetching new snippet data from raw database...")
+            raw_results = conn.execute(text(query)).mappings().all()
+
+    else:
+        if service is None or folder_id is None:
+            raise ValueError("service and folder_id are required when storage_mode is 'GDRIVE'")
+
+        from src.load.gdrive.file_management import load_jsonl_file
+
+        format_map_list = load_jsonl_file(
+            service,
+            filename="processed_vids.jsonl",
+            folder_id=folder_id,
+            desired_keys=["video_id", "video_format"],
+        )
+
+        for row in format_map_list:
+            formats_map[row[0]] = row[1]
+
+        logger.info("Fetching new snippets data from raw Drive...")
+        raw_results = load_jsonl_file(
+            service,
+            filename="snippets_and_stats.jsonl",
+            folder_id=folder_id,
+            desired_keys=["scraped_at", "video_response"],
+            filter_date_scraped=last_scraped_at,
+        )
+
+    return raw_results, formats_map
+
+
+def upsert_snippets(engine: Any, data_list: list) -> None:
     """Insert new video snippets or update existing ones on primary key conflict.
 
     Args:
@@ -26,8 +86,6 @@ def upsert_snippets(data_list: list, db_uri: str) -> None:
     if not data_list:
         logger.info("No snippet records to upsert. Skipping DB load.")
         return
-
-    engine = create_engine(db_uri)
 
     query = text("""
         INSERT INTO skz_snippets 
@@ -90,27 +148,40 @@ def process_snippets(raw_data: Sequence[Any], formats_map: dict) -> list:
 
 @app.command()
 def main(
+    storage_mode_start: str = typer.Option(
+        StorageOptions.GDRIVE,
+        help="Storage for the initial metadata storage. Either 'DATABASE' or 'GDRIVE'",
+    ),
     uri_key_start: str = typer.Option("URI_KEY_START", help="DB URI key containing the raw data"),
     uri_key_end: str = typer.Option(
         "URI_KEY_END", help="DB URI key containing the transformed data"
     ),
+    gcp_credentials_key: str = typer.Option(
+        "GCP_CREDENTIALS", help="The .env key containing the GCP credentials"
+    ),
+    folder_id_key: str = typer.Option(
+        "DRIVE_FOLDER_ID", help="The .env key containing the Drive folder ID"
+    ),
 ) -> None:
-    """Execute the extraction, transformation, and load process for video snippets.
+    # Prepare authentication
+    if storage_mode_start == "DATABASE":
+        status, engine_start = is_connected_to_db(uri_key_start)
+        if not status:
+            return
+    else:
+        from src.load.gdrive.authentication import get_drive_service
 
-    Args:
-        uri_key_start (str, optional): The origin database connection key.
-        uri_key_end (str, optional): The destination database connection key.
-    """
-    if not (is_connected_to_db(uri_key_start) and is_connected_to_db(uri_key_end)):
+        drive_folder_id = os.environ.get(folder_id_key, "")
+        drive_service = get_drive_service(gcp_credentials_key)
+        if not drive_folder_id or not drive_service:
+            return
+
+    # Connect to the database destination
+    status, engine_end = is_connected_to_db(uri_key_end)
+    if not status:
         return
 
-    # prepare_authentication()
-    db_uri_start = os.environ.get(uri_key_start, "")
-    db_uri_end = os.environ.get(uri_key_end, "")
-    engine_start = create_engine(db_uri_start)
-    engine_end = create_engine(db_uri_end)
-
-    # get_last_scraped_at()
+    # Get the last scraped date
     try:
         with engine_end.connect() as conn:
             result = conn.execute(text("SELECT MAX(scraped_at) FROM skz_snippets"))
@@ -119,35 +190,24 @@ def main(
         logger.warning(f"Could not read from local DB (table might be empty): {e}")
         last_scraped_at = None
 
-    # get_formats_map()
-    formats_map = {}
-    with engine_start.connect() as conn:
-        result = conn.execute(text("SELECT video_id, video_format FROM processed_vids"))
-        for row in result:
-            formats_map[row[0]] = row[1]
-
-    # get_new_raw_results()
-    # Fetch NEW data from Neon DB
-    query = "SELECT scraped_at, video_response FROM snippets_and_stats"
-    if last_scraped_at:
-        query += f" WHERE scraped_at > '{last_scraped_at}'"
-    query += " ORDER BY scraped_at ASC"
-
-    with engine_start.connect() as conn:
-        logger.info("Fetching new snippet data from raw database...")
-        raw_results = conn.execute(text(query)).mappings().all()
+    # Get raw, new snippets
+    if storage_mode_start == "DATABASE":
+        raw_results, formats_map = get_new_snippets(
+            "DATABASE", last_scraped_at, engine=engine_start
+        )
+    else:
+        raw_results, formats_map = get_new_snippets(
+            "GDRIVE", last_scraped_at, service=drive_service, folder_id=drive_folder_id
+        )
 
     if not raw_results:
         logger.info("No new snippets to process.")
         return
-    # ---
 
     # Transform and Upsert
     logger.info(f"Transforming {len(raw_results)} new batches...")
     transformed_data = process_snippets(raw_results, formats_map)
-
-    # Use our new upsert function instead of append_to_db!
-    upsert_snippets(transformed_data, db_uri_end)
+    upsert_snippets(engine_end, transformed_data)
 
 
 if __name__ == "__main__":
