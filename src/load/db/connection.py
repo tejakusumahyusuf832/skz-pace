@@ -15,18 +15,7 @@ app = typer.Typer()
 
 
 def is_connected_to_db(uri_key: str, return_bool: bool = True) -> Any:
-    """Verify the database connection using a URI stored in environment variables.
-
-    Args:
-        uri_key (str): The environment variable key containing the database URI.
-        return_bool (bool, optional): Return a boolean result instead of None on failure.
-            Defaults to True.
-
-    Returns:
-        bool | None: True if the connection succeeds. False if return_bool is True and
-            the connection fails. None if return_bool is False and the connection fails.
-    """
-    db_uri = os.environ.get(uri_key)
+    db_uri = os.environ.get(uri_key, "")
 
     if not db_uri:
         logger.error(
