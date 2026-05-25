@@ -5,13 +5,13 @@ from loguru import logger
 
 
 def prepare_authentication(
-    storage_mode: str = "gdrive",
+    storage_mode: str = "GDRIVE",
     *,
     db_uri_key: str = "DB_URI",
     gcp_credentials_key: str = "GCP_CREDENTIALS",
     drive_folder_id_key: str = "DRIVE_FOLDER_ID",
 ) -> Any:
-    if storage_mode == "database":
+    if storage_mode == "DATABASE":
         # --- LOCAL IMPORTS ---
         from src.load.db.connection import is_connected_to_db
 
@@ -30,15 +30,15 @@ def prepare_authentication(
 
 
 def get_old_processed_ids(
-    storage_mode: str = "gdrive",
+    storage_mode: str = "GDRIVE",
     *,
     db_engine: Any = None,
     drive_service: Any = None,
     folder_id: str | None = None,
 ) -> list[str] | list:
-    if storage_mode == "database":
+    if storage_mode == "DATABASE":
         if db_engine is None:
-            raise ValueError("db_engine is required when storage_mode is 'database'")
+            raise ValueError("db_engine is required when storage_mode is 'DATABASE'")
 
         # --- LOCAL IMPORTS ---
         from sqlalchemy import text
@@ -55,7 +55,7 @@ def get_old_processed_ids(
     else:
         if drive_service is None or folder_id is None:
             raise ValueError(
-                "drive_service and folder_id are required when storage_mode is 'gdrive'"
+                "drive_service and folder_id are required when storage_mode is 'GDRIVE'"
             )
 
         # # --- LOCAL IMPORTS ---
@@ -80,9 +80,9 @@ def store_raw_metadata(
     drive_service: Any = None,
     folder_id: str | None = None,
 ):
-    if storage_mode == "database":
+    if storage_mode == "DATABASE":
         if db_engine is None:
-            raise ValueError("db_engine is required when storage_mode is 'database'")
+            raise ValueError("db_engine is required when storage_mode is 'DATABASE'")
 
         # --- LOCAL IMPORTS ---
         from src.load.db.storage import append_to_db, prune_old_raw_data
@@ -95,10 +95,10 @@ def store_raw_metadata(
         logger.info("Cleaning up old raw data to save cloud storage space...")
         prune_old_raw_data(db_engine, days_old=7)
 
-    elif storage_mode == "gdrive":
+    elif storage_mode == "GDRIVE":
         if drive_service is None or folder_id is None:
             raise ValueError(
-                "drive_service and folder_id are required when storage_mode is 'gdrive'"
+                "drive_service and folder_id are required when storage_mode is 'GDRIVE'"
             )
 
         # --- LOCAL IMPORTS ---

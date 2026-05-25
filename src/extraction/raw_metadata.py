@@ -24,8 +24,8 @@ app = typer.Typer()
 
 
 class StorageOptions(str, Enum):
-    DATABASE = "database"
-    GDRIVE = "gdrive"
+    DATABASE = "DATABASE"
+    GDRIVE = "GDRIVE"
 
 
 def get_youtube_client(api_key: str) -> object:
@@ -176,7 +176,7 @@ def get_new_processed_vids(
 @app.command()
 def main(
     storage_mode: str = typer.Option(
-        StorageOptions.GDRIVE, help="Storage for the raw metadata. Either 'database' or 'gdrive'"
+        StorageOptions.GDRIVE, help="Storage for the raw metadata. Either 'DATABASE' or 'GDRIVE'"
     ),
     db_uri_key: str = typer.Option("DB_URI", help="The .env key containing the database URI"),
     gcp_credentials_key: str = typer.Option(
@@ -198,7 +198,7 @@ def main(
         channel_id (str, optional): The target YouTube channel ID.
     """
     # Prepare the synchronization process
-    if storage_mode == "database":
+    if storage_mode == "DATABASE":
         db_engine = prepare_authentication(storage_mode, db_uri_key=db_uri_key)
         if not db_engine:
             return
@@ -307,12 +307,12 @@ def main(
     except Exception as e:
         logger.error(f"Extraction halted: {e}")
     finally:
-        if storage_mode == "database":
+        if storage_mode == "DATABASE":
             store_raw_metadata(
                 fetched_snippets_and_stats,
                 fetched_processed_vids,
                 fetched_top_comments,
-                "database",
+                "DATABASE",
                 db_engine=db_engine,
             )
         else:
@@ -320,7 +320,7 @@ def main(
                 fetched_snippets_and_stats,
                 fetched_processed_vids,
                 fetched_top_comments,
-                "gdrive",
+                "GDRIVE",
                 drive_service=drive_service,
                 folder_id=drive_folder_id,
             )
