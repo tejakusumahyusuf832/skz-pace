@@ -4,9 +4,9 @@ name: 1.0 - Daily YouTube Raw Data Extraction
 # TRIGGERS
 # -----------------------------------------------------------------------------
 on:
-  schedule:
-    # In UTC.
-    - cron: '15 21 * * *'
+  # schedule:
+  #   # In UTC.
+  #   - cron: '15 21 * * *'
   
   # Allows to trigger this workflow manually from the GitHub Actions UI
   workflow_dispatch:
