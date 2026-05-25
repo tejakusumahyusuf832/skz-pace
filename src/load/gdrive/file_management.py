@@ -18,6 +18,18 @@ def get_file_id_by_name(service: Any, filename: str, folder_id: str) -> str | No
     return items[0]["id"] if items else None
 
 
+def should_keep_record(scraped_at_str, *, max_days=None, last_scraped_date=None):
+    dt = datetime.fromisoformat(scraped_at_str)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+
+    if last_scraped_date:
+        return dt > last_scraped_date
+    elif max_days:
+        cutoff_time = datetime.now(timezone.utc) - timedelta(days=max_days)
+        return dt >= cutoff_time
+
+
 def _download_file(service, file_path, file_id):
     request = service.files().get_media(fileId=file_id)
     with io.FileIO(file_path, "wb") as file_stream:
@@ -33,6 +45,7 @@ def load_jsonl_file(
     filename: str,
     folder_id: str,
     desired_keys: None | str | list = None,
+    filter_date_scraped=None,
 ) -> list:
     file_id = get_file_id_by_name(service, filename, folder_id)
 
@@ -49,36 +62,39 @@ def load_jsonl_file(
             if isinstance(desired_keys, str):
                 for line in file:
                     record = json.loads(line)
-                    filtered_record = record.get(desired_keys)
-                    jsonl_data.append(filtered_record)
+                    if filter_date_scraped:
+                        if should_keep_record(
+                            record.get("scraped_at"), last_scraped_date=filter_date_scraped
+                        ):
+                            rec_dict = record.get(desired_keys)
+                            jsonl_data.append(rec_dict)
+                    else:
+                        rec_dict = record.get(desired_keys)
+                        jsonl_data.append(rec_dict)
             elif isinstance(desired_keys, list):
                 for line in file:
                     record = json.loads(line)
-                    filtered_record = {key: record.get(key) for key in desired_keys}
-                    jsonl_data.append(filtered_record)
+                    if filter_date_scraped:
+                        if should_keep_record(
+                            record.get("scraped_at"), last_scraped_date=filter_date_scraped
+                        ):
+                            rec_dict = {key: record.get(key) for key in desired_keys}
+                            jsonl_data.append(rec_dict)
+                    else:
+                        rec_dict = {key: record.get(key) for key in desired_keys}
+                        jsonl_data.append(rec_dict)
             elif not desired_keys:
                 for line in file:
                     record = json.loads(line)
-                    jsonl_data.append(record)
+                    if filter_date_scraped:
+                        if should_keep_record(
+                            record.get("scraped_at"), last_scraped_date=filter_date_scraped
+                        ):
+                            jsonl_data.append(record)
+                    else:
+                        jsonl_data.append(record)
 
     return jsonl_data
-
-
-def should_keep_record(scraped_at_str, max_days=5):
-    """Returns True if the timestamp is newer than max_days, otherwise False."""
-    if not scraped_at_str:
-        return False
-
-    try:
-        dt = datetime.fromisoformat(scraped_at_str)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-
-        cutoff_time = datetime.now(timezone.utc) - timedelta(days=max_days)
-        return dt >= cutoff_time
-
-    except ValueError:
-        return False
 
 
 def filter_and_process_jsonl(old_local_path, new_local_path, new_data, should_filter: bool):
