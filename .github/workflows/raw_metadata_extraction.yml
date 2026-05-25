@@ -1,0 +1,52 @@
+name: Daily YouTube Raw Data Extraction
+
+# -----------------------------------------------------------------------------
+# TRIGGERS
+# -----------------------------------------------------------------------------
+on:
+  schedule:
+    # In UTC.
+    - cron: '15 21 * * *'
+  
+  # Allows to trigger this workflow manually from the GitHub Actions UI
+  workflow_dispatch:
+
+# -----------------------------------------------------------------------------
+# JOBS
+# -----------------------------------------------------------------------------
+jobs:
+  extract_and_load_raw_data:
+    runs-on: ubuntu-latest
+
+    # Set the environment variables mapping to the GitHub Secrets
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      GCP_CREDENTIALS: ${{ secrets.GCP_CREDENTIALS }}
+      DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
+      YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}
+
+    steps:
+      # 1. Check out the repository code
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # 2. Install 'uv' by Astral for ultra-fast dependency resolution
+      - name: Install UV
+        uses: astral-sh/setup-uv@v2
+
+      # 3. Set up Python 3.12 (matching the local environment)
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      # 4. Install project dependencies using uv
+      # uv sync will read your pyproject.toml and uv.lock to replicate your local environment exactly
+      - name: Install Dependencies
+        run: uv sync --no-dev
+
+      # 5. Execute the script
+      # Use 'uv run' to execute within the isolated environment.
+      # Pass the Typer options pointing to the environment variable names the script should look for.
+      - name: Extract Raw Metadata
+        run: uv run src/extraction/raw_metadata.py

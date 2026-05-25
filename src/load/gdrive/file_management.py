@@ -129,7 +129,9 @@ def update_to_drive_jsonl(service: Any, folder_id: str, *, new_data: list, filen
         _download_file(service, old_local_path, file_id)
         filter_and_process_jsonl(old_local_path, new_local_path, new_data, should_filter)
 
+        logger.info(f"Updating {filename} on Google Drive...")
         with open(new_local_path, "rb") as f:
             media = MediaIoBaseUpload(f, mimetype="application/jsonlines", resumable=True)
-            logger.info("Updating existing file on Google Drive...")
             service.files().update(fileId=file_id, media_body=media).execute()
+
+    logger.success(f"{filename} updated to Google Drive successfully.")

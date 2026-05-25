@@ -30,10 +30,11 @@ def get_new_snippets(
     service: Any = None,
     folder_id: str = "FOLDER_ID",
 ) -> tuple:
-    formats_map = {}
     if storage_mode == "DATABASE":
         if engine is None:
             raise ValueError("engine is required when storage_mode is 'DATABASE'")
+
+        formats_map = {}
         with engine.connect() as conn:
             result = conn.execute(text("SELECT video_id, video_format FROM processed_vids"))
             for row in result:
@@ -61,8 +62,7 @@ def get_new_snippets(
             desired_keys=["video_id", "video_format"],
         )
 
-        for row in format_map_list:
-            formats_map[row[0]] = row[1]
+        formats_map = {row.get("video_id"): row.get("video_format") for row in format_map_list}
 
         logger.info("Fetching new snippets data from raw Drive...")
         raw_results = load_jsonl_file(
