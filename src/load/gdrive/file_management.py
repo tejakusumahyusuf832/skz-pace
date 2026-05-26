@@ -12,7 +12,11 @@ from loguru import logger
 def get_file_id_by_name(service: Any, filename: str, folder_id: str) -> str | None:
     """Search for a file by name in a specific folder and return its ID."""
     query = f"name='{filename}' and '{folder_id}' in parents and trashed=false"
-    results = service.files().list(q=query, spaces="drive", fields="files(id, name)").execute()
+    results = (
+        service.files()
+        .list(q=query, spaces="drive", fields="files(id, name)")
+        .execute(num_retries=5)
+    )
     items = results.get("files", [])
 
     return items[0]["id"] if items else None
