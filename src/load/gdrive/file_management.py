@@ -101,7 +101,9 @@ def load_jsonl_file(
     return jsonl_data
 
 
-def filter_and_process_jsonl(old_local_path, new_local_path, new_data, should_filter: bool):
+def filter_and_process_jsonl(
+    old_local_path, new_local_path, new_data, should_filter: bool, max_days=None
+):
     with open(new_local_path, "w") as out_f:
         if os.path.exists(old_local_path):
             with open(old_local_path, "r") as in_f:
@@ -112,7 +114,7 @@ def filter_and_process_jsonl(old_local_path, new_local_path, new_data, should_fi
 
                     try:
                         record = json.loads(line)
-                        if should_keep_record(record.get("scraped_at")):
+                        if should_keep_record(record.get("scraped_at"), max_days=max_days):
                             out_f.write(line)
 
                     except json.JSONDecodeError:
@@ -122,7 +124,9 @@ def filter_and_process_jsonl(old_local_path, new_local_path, new_data, should_fi
             out_f.write(json.dumps(item) + "\n")
 
 
-def update_to_drive_jsonl(service: Any, folder_id: str, *, new_data: list, filename: str):
+def update_to_drive_jsonl(
+    service: Any, folder_id: str, *, new_data: list, filename: str, max_days
+):
     file_id = get_file_id_by_name(service, filename, folder_id)
     should_filter = True if filename != "processed_vids.jsonl" else False
 
@@ -131,7 +135,7 @@ def update_to_drive_jsonl(service: Any, folder_id: str, *, new_data: list, filen
         new_local_path = os.path.join(temp_dir, filename)
 
         _download_file(service, old_local_path, file_id)
-        filter_and_process_jsonl(old_local_path, new_local_path, new_data, should_filter)
+        filter_and_process_jsonl(old_local_path, new_local_path, new_data, should_filter, max_days)
 
         logger.info(f"Updating {filename} on Google Drive...")
         with open(new_local_path, "rb") as f:

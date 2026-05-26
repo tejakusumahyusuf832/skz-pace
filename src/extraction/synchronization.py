@@ -111,18 +111,21 @@ def store_raw_metadata(
             folder_id,
             new_data=fetched_processed_vids,
             filename="processed_vids.jsonl",
+            max_days=None,
         )
         update_to_drive_jsonl(
             drive_service,
             folder_id,
             new_data=fetched_snippets_and_stats,
             filename="snippets_and_stats.jsonl",
+            max_days=3,
         )
         update_to_drive_jsonl(
             drive_service,
             folder_id,
             new_data=fetched_top_comments,
             filename="top_comments.jsonl",
+            max_days=3,
         )
 
     else:
