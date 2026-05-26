@@ -4,7 +4,6 @@ from typing import Any
 
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
-import httplib2
 from loguru import logger
 
 
@@ -18,9 +17,8 @@ def get_drive_service(gcp_credentials_key: str = "GCP_CREDENTIALS") -> Any:
         return
 
     creds_dict = json.loads(creds_json)
-    http = httplib2.Http(cache=None)
     credentials = service_account.Credentials.from_service_account_info(
         creds_dict, scopes=["https://www.googleapis.com/auth/drive"]
     )
 
-    return build("drive", "v3", credentials=credentials, http=http)
+    return build("drive", "v3", credentials=credentials)
