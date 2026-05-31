@@ -44,7 +44,11 @@ def skz_pace_pipeline():
         """
         from src.transformation.fetch_snippets import main
 
-        main(uri_key_start="RAW_SKZ_PACE_DB_URL", uri_key_end="DOCKER_TRANSFORMED_SKZ_PACE_DB_URL")
+        main(
+            storage_mode_start="DATABASE",
+            uri_key_start="RAW_SKZ_PACE_DB_URL",
+            uri_key_end="DOCKER_TRANSFORMED_SKZ_PACE_DB_URL",
+        )
 
     @task
     def process_stats():
@@ -55,7 +59,11 @@ def skz_pace_pipeline():
         """
         from src.transformation.fetch_stats import main
 
-        main(uri_key_start="RAW_SKZ_PACE_DB_URL", uri_key_end="DOCKER_TRANSFORMED_SKZ_PACE_DB_URL")
+        main(
+            storage_mode_start="DATABASE",
+            uri_key_start="RAW_SKZ_PACE_DB_URL",
+            uri_key_end="DOCKER_TRANSFORMED_SKZ_PACE_DB_URL",
+        )
 
     @task
     def process_top_comments():
@@ -66,7 +74,11 @@ def skz_pace_pipeline():
         """
         from src.transformation.fetch_top_comments import main
 
-        main(uri_key_start="RAW_SKZ_PACE_DB_URL", uri_key_end="DOCKER_TRANSFORMED_SKZ_PACE_DB_URL")
+        main(
+            storage_mode_start="DATABASE",
+            uri_key_start="RAW_SKZ_PACE_DB_URL",
+            uri_key_end="DOCKER_TRANSFORMED_SKZ_PACE_DB_URL",
+        )
 
     @task
     def process_transcripts():
