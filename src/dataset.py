@@ -36,7 +36,7 @@ query = """
         MAX(view_count) FILTER (WHERE exit_rank = 1) AS latest_view_count
         
     FROM ranked_stats
-    FULL JOIN skz_snippets
+    LEFT JOIN skz_snippets
         ON skz_snippets.video_id = ranked_stats.video_id
     GROUP BY
         ranked_stats.video_id,
@@ -192,9 +192,9 @@ get_content_pillar = (
 )
 
 
-age_days = (pl.col("last_scraped_at") - pl.col("published_at")) / pl.duration(days=1)
+get_video_age_days = (pl.col("last_scraped_at") - pl.col("published_at")).dt.total_days()
 
-enum_age_days = [
+enum_video_age_days = [
     "New Release (<30 Days)",
     "Recent (1-6 Months)",
     "Catalog (6-24 Months)",
@@ -202,15 +202,15 @@ enum_age_days = [
 ]
 
 
-get_video_age_days = (
-    pl.when(age_days < 30)
+get_video_age_cohort = (
+    pl.when(get_video_age_days < 30)
     .then(pl.lit("New Release (<30 Days)"))
-    .when(age_days < 180)
+    .when(get_video_age_days < 180)
     .then(pl.lit("Recent (1-6 Months)"))
-    .when(age_days < 720)
+    .when(get_video_age_days < 720)
     .then(pl.lit("Catalog (6-24 Months)"))
     .otherwise(pl.lit("Legacy (2+ Years)"))
-    .cast(pl.Enum(enum_age_days))
+    .cast(pl.Enum(enum_video_age_days))
 )
 
 
@@ -245,10 +245,34 @@ def make_data(
     db_uri_key: str = typer.Option(
         "DB_URI_KEY", help="URI key of the database containing your data."
     ),
+    sentiment_result_path: Path = INTERIM_DATA_DIR / "df_sentiment_final_result.parquet",
     output_path: Path = INTERIM_DATA_DIR / "dataset.parquet",
     return_data: bool = False,
 ):
-    # db_uri_key = "DB_URI_KEY"
+    # Get the sentiment analysis result
+    if sentiment_result_path.exists():
+        df_sentiment_result = pl.scan_parquet(sentiment_result_path)
+        logger.success("Dataset containing sentiment analysis result downloaded successfully.")
+    else:
+        # Perform sentiment analysis if not
+        from src.analyses.sentiment import perform_sentiment_analysis
+
+        logger.warning("Sentiment result not found in the directory.")
+        logger.info("Starting to perform sentiment analysis")
+        try:
+            df_sentiment_result = perform_sentiment_analysis(
+                db_uri_key=db_uri_key, return_data=True
+            )
+            if df_sentiment_result is None:
+                logger.error("Sentiment analysis returned no result.")
+                return
+            if isinstance(df_sentiment_result, pl.DataFrame):
+                df_sentiment_result = df_sentiment_result.lazy()
+
+            logger.success("Sentiment analysis performed successfully")
+        except Exception as e:
+            logger.error(f"Sentiment analysis incomplete: {e}")
+            return
 
     db_uri = os.environ.get(db_uri_key, "")
     if not db_uri:
@@ -258,7 +282,7 @@ def make_data(
     logger.info("Fetching data from database...")
     try:
         df_lazy = pl.read_database_uri(query, db_uri).lazy()
-        logger.success("Data fetched successfully.")
+        logger.success("Data fetched from database successfully.")
     except Exception as e:
         logger.error(f"Failed to fetch data from database: {e}")
         return
@@ -280,20 +304,23 @@ def make_data(
             content_pillar=get_content_pillar,
             publish_year=pl.col("published_at").dt.year().cast(pl.UInt16),
             publish_month=pl.col("published_at").dt.month().cast(pl.UInt8),
-            video_age_days=get_video_age_days,
+            video_age_cohort=get_video_age_cohort,
+            video_age_days=get_video_age_days.cast(pl.UInt16),
             lifetime_engagement_ratio=get_lifetime_engagement_ratio,
             marginal_ratio=get_marginal_ratio,
             daily_view_velocity=get_daily_view_velocity,
         )
         .select(pl.all().exclude(pl.Datetime, pl.Int64))
+        .join(df_sentiment_result, on="video_id", how="left")
     )
 
-    df_engineered.collect().sample(8)
+    logger.success("Main features engineered successfully.")
 
     if return_data:
         return df_engineered
     else:
         df_engineered.sink_parquet(output_path)
+        logger.success("Dataset loaded successfully.")
 
 
 if __name__ == "__main__":
