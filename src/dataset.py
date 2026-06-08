@@ -32,6 +32,8 @@ query = """
         MAX(ranked_stats.scraped_at) FILTER (WHERE exit_rank = 1) AS last_scraped_at,
         MAX(like_count) FILTER (WHERE entry_rank = 1) AS earliest_like_count,
         MAX(like_count) FILTER (WHERE exit_rank = 1) AS latest_like_count,
+        MAX(comment_count) FILTER (WHERE entry_rank = 1) AS earliest_comment_count,
+        MAX(comment_count) FILTER (WHERE exit_rank = 1) AS latest_comment_count,
         MAX(view_count) FILTER (WHERE entry_rank = 1) AS earliest_view_count,
         MAX(view_count) FILTER (WHERE exit_rank = 1) AS latest_view_count
         
@@ -214,10 +216,13 @@ get_video_age_cohort = (
 )
 
 
-get_lifetime_engagement_ratio = (
+get_lifetime_engagement_rate = (
     pl.when(pl.col("latest_view_count") == 0)
     .then(None)
-    .otherwise(pl.col("latest_like_count") / pl.col("latest_view_count"))
+    .otherwise(
+        (pl.col("latest_like_count") + pl.col("latest_comment_count"))
+        / pl.col("latest_view_count")
+    )
 )
 
 
@@ -306,7 +311,7 @@ def make_data(
             publish_month=pl.col("published_at").dt.month().cast(pl.UInt8),
             video_age_cohort=get_video_age_cohort,
             video_age_days=get_video_age_days.cast(pl.UInt16),
-            lifetime_engagement_ratio=get_lifetime_engagement_ratio,
+            lifetime_engagement_rate=get_lifetime_engagement_rate,
             marginal_ratio=get_marginal_ratio,
             daily_view_velocity=get_daily_view_velocity,
         )
