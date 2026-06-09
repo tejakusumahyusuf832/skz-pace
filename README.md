@@ -1,10 +1,11 @@
-# SKZ_PACE
+# SKZ PACE (IN PROGRESS)
 
 <a target="_blank" href="https://cookiecutter-data-science.drivendata.org/">
     <img src="https://img.shields.io/badge/CCDS-Project%20template-328F97?logo=cookiecutter" />
 </a>
 
 Stray Kids Predictive Analytics and Content Ecosystem
+
 
 ## Project Organization
 
