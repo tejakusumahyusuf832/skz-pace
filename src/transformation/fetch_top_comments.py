@@ -6,6 +6,7 @@ and authorship details, and formats them for downstream NLP and sentiment analys
 
 from enum import Enum
 import os
+import time
 from typing import Any, Sequence
 
 from loguru import logger
@@ -151,8 +152,16 @@ def main(
         logger.info("No new comments to process.")
         return
 
+    logger.info(f"Processing top comments from {storage_mode_start}...")
     transformed_data = process_comments(raw_results)
+    logger.success("Top comments processed successfully.")
+
+    logger.info("Appending new top comments to database...")
+    start_time = time.perf_counter()
     append_to_db(transformed_data, "skz_top_comments", engine_end)
+    end_time = time.perf_counter()
+    execution_time = (end_time - start_time) / 60
+    logger.info(f"Execution time of appending: {execution_time:.2f} minutes.")
 
 
 if __name__ == "__main__":
