@@ -17,6 +17,7 @@ classifiers = [
 ]
 dependencies = [
     "connectorx>=0.4.5",
+    "datasets>=5.0.0",
     "fasttext-wheel>=0.9.2",
     "google-api-python-client>=2.192.0",
     "google-auth>=2.49.1",
