@@ -18,9 +18,7 @@ query = """
             ROW_NUMBER() OVER (PARTITION BY video_id ORDER BY scraped_at ASC) as entry_rank,
             ROW_NUMBER() OVER (PARTITION BY video_id ORDER BY scraped_at DESC) as exit_rank
         FROM skz_stats
-        WHERE
-            scraped_at >= '2026-04-27 00:00:00' AND
-            scraped_at < '2026-05-27 00:00:00'
+        WHERE scraped_at >= now() - interval '30 days'
     )
 
     SELECT
@@ -39,7 +37,7 @@ query = """
         
     FROM ranked_stats
     LEFT JOIN skz_snippets
-        ON skz_snippets.video_id = ranked_stats.video_id
+        ON ranked_stats.video_id = skz_snippets.video_id
     GROUP BY
         ranked_stats.video_id,
         skz_snippets.title,
