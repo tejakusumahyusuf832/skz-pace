@@ -19,9 +19,7 @@ query = """
         comment_id, 
         text
     FROM skz_top_comments
-    WHERE
-        scraped_at >= '2026-04-27 00:00:00' AND
-        scraped_at < '2026-05-27 00:00:00'
+    WHERE scraped_at >= now() - interval '30 days'
     ORDER BY
         comment_id,
         scraped_at DESC
@@ -50,21 +48,27 @@ def detect_language(text_series: pl.Series) -> pl.Series:
 
 
 def get_sentiment_labels(text_series: pl.Series) -> pl.Series:
-    model_id = "cardiffnlp/twitter-xlm-roberta-base-sentiment"
-    local_dir = MODELS_DIR / "hugging-face"
+    MODEL_ID = "cardiffnlp/twitter-xlm-roberta-base-sentiment"
+    MODEL_PATH = MODELS_DIR / "best-kpop-sentiment-model"
 
     try:
-        tokenizer = AutoTokenizer.from_pretrained(local_dir, local_files_only=True)
+        if not MODEL_PATH.exists():
+            MODEL_PATH = MODELS_DIR / "hugging-face"
+
+        logger.info(f"Loading {MODEL_PATH.name} from the model directory...")
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_PATH, local_files_only=True)
         model = AutoModelForSequenceClassification.from_pretrained(
-            local_dir, local_files_only=True
+            MODEL_PATH, local_files_only=True
         )
+        logger.success("Model loaded successfully.")
+
     except Exception:
         logger.warning("Model missing or incomplete locally. Downloading from Hugging Face...")
 
-        tokenizer = AutoTokenizer.from_pretrained(model_id)
-        model = AutoModelForSequenceClassification.from_pretrained(model_id)
-        tokenizer.save_pretrained(local_dir)
-        model.save_pretrained(local_dir)
+        tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+        model = AutoModelForSequenceClassification.from_pretrained(MODEL_ID)
+        tokenizer.save_pretrained(MODEL_PATH)
+        model.save_pretrained(MODEL_PATH)
         logger.success("Download complete and safely stored!")
 
     sentiment_pipeline = pipeline(
@@ -77,7 +81,7 @@ def get_sentiment_labels(text_series: pl.Series) -> pl.Series:
         dtype=torch.float16,
     )
 
-    text_list = text_series.to_list()
+    text_list = [str(t) if t is not None else "" for t in text_series.to_list()]
     results = sentiment_pipeline(text_list, batch_size=64)
     sentiment_labels = [result["label"] for result in results]
     return pl.Series(sentiment_labels)
@@ -98,6 +102,7 @@ def perform_sentiment_analysis(
     logger.info("Fetching comment data from database...")
     try:
         df_lazy = pl.read_database_uri(query, DB_URI).lazy()
+        df_lazy.sink_parquet(INTERIM_DATA_DIR / "df_top_comments_30_days.parquet")
         logger.success("Comment data fetched successfully.")
     except Exception as e:
         logger.error(f"Failed to fetch comment data from database: {e}")
@@ -112,6 +117,8 @@ def perform_sentiment_analysis(
         .map_batches(detect_language, return_dtype=pl.String)
         .alias("language")
     )
+
+    df_lang_detected.sink_parquet(INTERIM_DATA_DIR / "df_top_comment_lang_detected.parquet")
 
     # Select only the languages that mainly appear 90% of the data
     df_selected_lang = (
@@ -141,13 +148,16 @@ def perform_sentiment_analysis(
 
     df_selected_labels = df_lang_detected.filter(pl.col("language").is_in(chosen_langs_list))
 
-    df_sentiment_result = (
-        df_selected_labels.with_columns(
-            pl.col("text")
-            .map_batches(get_sentiment_labels, return_dtype=pl.String)
-            .alias("sentiment_label")
-        )
-        .select(
+    df_sentiment_result = df_selected_labels.with_columns(
+        pl.col("text")
+        .map_batches(get_sentiment_labels, return_dtype=pl.String)
+        .alias("sentiment_label")
+    )
+
+    df_sentiment_result.sink_parquet(INTERIM_DATA_DIR / "df_sentiment_result.parquet")
+
+    df_sentiment_final_result = (
+        df_sentiment_result.select(
             pl.col("video_id", "comment_id"),
             pl.when(pl.col("sentiment_label") == "positive")
             .then(pl.lit(1))
@@ -160,9 +170,9 @@ def perform_sentiment_analysis(
     )
 
     if return_data:
-        return df_sentiment_result
+        return df_sentiment_final_result
     else:
-        df_sentiment_result.sink_parquet(output_path)
+        df_sentiment_final_result.sink_parquet(output_path)
 
 
 if __name__ == "__main__":
