@@ -18,7 +18,9 @@ query = """
             ROW_NUMBER() OVER (PARTITION BY video_id ORDER BY scraped_at ASC) as entry_rank,
             ROW_NUMBER() OVER (PARTITION BY video_id ORDER BY scraped_at DESC) as exit_rank
         FROM skz_stats
-        WHERE scraped_at >= now() - interval '30 days'
+        WHERE
+            scraped_at >= '2026-05-17 00:00:00' AND
+            scraped_at < '2026-06-16 00:00:00'
     )
 
     SELECT
@@ -224,11 +226,14 @@ get_lifetime_engagement_rate = (
 )
 
 
-get_marginal_ratio = (
+get_marginal_engagement_rate = (
     pl.when(pl.col("latest_view_count") - pl.col("earliest_view_count") == 0)
     .then(None)
     .otherwise(
-        (pl.col("latest_like_count") - pl.col("earliest_like_count"))
+        (
+            (pl.col("latest_like_count") - pl.col("earliest_like_count"))
+            + (pl.col("latest_comment_count") - pl.col("earliest_comment_count"))
+        )
         / (pl.col("latest_view_count") - pl.col("earliest_view_count"))
     )
 )
@@ -310,7 +315,7 @@ def make_data(
             video_age_cohort=get_video_age_cohort,
             video_age_days=get_video_age_days.cast(pl.UInt16),
             lifetime_engagement_rate=get_lifetime_engagement_rate,
-            marginal_ratio=get_marginal_ratio,
+            marginal_engagement_rate=get_marginal_engagement_rate,
             daily_view_velocity=get_daily_view_velocity,
         )
         .select(pl.all().exclude(pl.Datetime, pl.Int64))

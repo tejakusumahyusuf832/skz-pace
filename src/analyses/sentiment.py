@@ -19,7 +19,9 @@ query = """
         comment_id, 
         text
     FROM skz_top_comments
-    WHERE scraped_at >= now() - interval '30 days'
+    WHERE
+        scraped_at >= '2026-05-17 00:00:00' AND
+        scraped_at < '2026-06-16 00:00:00'
     ORDER BY
         comment_id,
         scraped_at DESC
@@ -106,6 +108,7 @@ def perform_sentiment_analysis(
         logger.success("Comment data fetched successfully.")
     except Exception as e:
         logger.error(f"Failed to fetch comment data from database: {e}")
+        return
 
     logger.info("Starting to detect languages...")
 
