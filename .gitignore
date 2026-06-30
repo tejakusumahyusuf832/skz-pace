@@ -211,3 +211,6 @@ drive-data-lake-5b86f1ac3297.json
 
 # Models
 models/
+
+# Power BI Dashboard
+dashboards/
