@@ -1,0 +1,600 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stray Kids YouTube Analytics - Interactive Data Dictionary</title>
+    <style>
+        :root {
+            --primary: #1e293b;
+            --secondary: #3b82f6;
+            --bg-color: #f8fafc;
+            --card-bg: #ffffff;
+            --text-main: #334155;
+            --text-light: #64748b;
+            --border: #e2e8f0;
+            
+            --type-string: #f59e0b;
+            --type-numeric: #10b981;
+            --type-date: #8b5cf6;
+            --type-formula: #ef4444;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            margin: 0;
+            color: var(--text-main);
+            line-height: 1.6;
+        }
+
+        header {
+            background-color: var(--primary);
+            color: white;
+            padding: 30px 40px;
+            text-align: center;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        header h1 { margin: 0 0 10px 0; font-size: 28px; letter-spacing: 0.5px; }
+        header p { margin: 0; color: #cbd5e1; font-size: 16px; }
+
+        .container {
+            display: flex;
+            max-width: 1300px;
+            margin: 30px auto;
+            padding: 0 20px;
+            gap: 30px;
+        }
+
+        .sidebar {
+            width: 280px;
+            flex-shrink: 0;
+            background: var(--card-bg);
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+            border: 1px solid var(--border);
+            height: fit-content;
+            position: sticky;
+            top: 30px;
+        }
+
+        .sidebar h3 {
+            margin-top: 0;
+            font-size: 14px;
+            text-transform: uppercase;
+            color: var(--text-light);
+            letter-spacing: 1px;
+            margin-bottom: 16px;
+        }
+
+        .sidebar ul { list-style: none; padding: 0; margin: 0; }
+        .sidebar li {
+            padding: 12px 16px;
+            margin-bottom: 8px;
+            cursor: pointer;
+            border-radius: 8px;
+            transition: all 0.2s ease;
+            font-weight: 500;
+            color: var(--text-main);
+            border: 1px solid transparent;
+        }
+
+        .sidebar li:hover { background-color: #f1f5f9; }
+        .sidebar li.active {
+            background-color: #eff6ff;
+            color: var(--secondary);
+            border-color: #bfdbfe;
+        }
+        
+        .sidebar li.engineered-tab {
+            margin-top: 24px;
+            background-color: #f0fdf4;
+            color: #166534;
+            border: 1px solid #bbf7d0;
+        }
+        .sidebar li.engineered-tab:hover { background-color: #dcfce7; }
+        .sidebar li.engineered-tab.active { background-color: #dcfce7; border-color: #86efac; box-shadow: 0 2px 4px rgba(22, 101, 52, 0.1); }
+
+        .main-content {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .search-container { position: relative; margin-bottom: 24px; }
+        .search-bar {
+            width: 100%;
+            padding: 16px 20px 16px 48px;
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            font-size: 16px;
+            box-sizing: border-box;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+            transition: border-color 0.2s;
+        }
+        .search-bar:focus { outline: none; border-color: var(--secondary); box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1); }
+        .search-icon {
+            position: absolute;
+            left: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-light);
+        }
+
+        .section-header {
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 2px solid var(--border);
+        }
+        .section-header h2 { margin: 0 0 8px 0; color: var(--primary); font-size: 24px; }
+        .section-header p { margin: 0; color: var(--text-light); }
+
+        .feature-section { display: none; animation: fadeIn 0.3s ease; }
+        .feature-section.active { display: block; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+
+        .card {
+            background: var(--card-bg);
+            padding: 24px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.05);
+            border: 1px solid var(--border);
+            border-left: 6px solid var(--text-light);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .card:hover {
+            transform: translateX(4px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+
+        .card.engineered-card { border-left-color: var(--type-numeric); background: #fafdfb; }
+        .card.pk-card { border-left-color: var(--primary); }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 12px;
+        }
+
+        .feature-title-group { display: flex; align-items: center; gap: 12px; }
+        .feature-name { font-size: 20px; font-weight: 700; color: var(--primary); font-family: monospace; }
+        
+        .badge {
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            color: white;
+            letter-spacing: 0.5px;
+        }
+        .badge.string { background-color: var(--type-string); }
+        .badge.numeric { background-color: var(--type-numeric); }
+        .badge.datetime { background-color: var(--type-date); }
+        .badge.engineered { background-color: var(--type-formula); }
+
+        .desc { font-size: 15px; color: #475569; margin-bottom: 16px; }
+        
+        .metadata-grid {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 8px 16px;
+            font-size: 13px;
+            background: #f8fafc;
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            margin-bottom: 12px;
+        }
+        
+        .metadata-label { font-weight: 600; color: var(--text-light); }
+        
+        .example-box {
+            background: #1e293b;
+            color: #a7f3d0;
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 13px;
+            overflow-x: auto;
+            border-left: 4px solid #34d399;
+        }
+
+        .example-box.formula {
+            background: #fff1f2;
+            color: #be123c;
+            border-left: 4px solid #f43f5e;
+            border: 1px solid #fecdd3;
+        }
+
+        /* Empty state for search */
+        .no-results {
+            text-align: center;
+            padding: 40px;
+            color: var(--text-light);
+            font-size: 18px;
+            display: none;
+            background: white;
+            border-radius: 12px;
+            border: 1px dashed var(--border);
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>Stray Kids Data Dictionary</h1>
+        <p>Engineered features reference for YouTube analytics</p>
+    </header>
+
+    <div class="container">
+        <!-- Sidebar Navigation -->
+        <div class="sidebar">
+            <h3>Raw Data Tables</h3>
+            <ul id="tabs">
+                <li class="active" onclick="switchTab('snippets', this)">skz_snippets</li>
+                <li onclick="switchTab('stats', this)">skz_stats</li>
+                <li onclick="switchTab('comments', this)">skz_top_comments</li>
+                <li onclick="switchTab('transcripts', this)">skz_transcripts</li>
+                
+                <h3 style="margin-top: 24px;">Analytics Layer</h3>
+                <li class="engineered-tab" onclick="switchTab('engineered', this)">Engineered Features ✦</li>
+            </ul>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            
+            <div class="search-container">
+                <svg class="search-icon" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                <input type="text" id="searchInput" class="search-bar" placeholder="Search features, definitions, or SQL logic..." onkeyup="handleSearch()">
+            </div>
+
+            <div id="noResults" class="no-results">
+                No matching features found for your search.
+            </div>
+
+            <!-- TABLE: SKZ_SNIPPETS -->
+            <div id="snippets" class="feature-section active">
+                <div class="section-header">
+                    <h2>skz_snippets</h2>
+                    <p>Static metadata and general details about each video. Scraped continuously but rarely changes post-publish.</p>
+                </div>
+
+                <div class="card pk-card">
+                    <div class="card-header">
+                        <div class="feature-title-group">
+                            <span class="feature-name">video_id</span>
+                            <span class="badge string">String (PK)</span>
+                        </div>
+                    </div>
+                    <div class="desc">The unique 11-character identifier assigned to the video by YouTube. Acts as the Primary Key connecting all tables.</div>
+                    <div class="example-box">"zMJhEXR7meQ"</div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="feature-title-group">
+                            <span class="feature-name">published_at</span>
+                            <span class="badge datetime">Timestamp (TZ)</span>
+                        </div>
+                    </div>
+                    <div class="desc">The exact date and time the video was published on the channel, including the timezone offset. Essential for calculating video age.</div>
+                    <div class="example-box">"2025-09-24 17:59:59+07"</div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="feature-title-group">
+                            <span class="feature-name">video_format</span>
+                            <span class="badge string">String</span>
+                        </div>
+                    </div>
+                    <div class="desc">The format classification of the video natively determined during scraping.</div>
+                    <div class="metadata-grid">
+                        <span class="metadata-label">Possible Values:</span>
+                        <span>"Long-form", "Short", "Live/VOD"</span>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="feature-title-group">
+                            <span class="feature-name">title</span>
+                            <span class="badge string">String</span>
+                        </div>
+                    </div>
+                    <div class="desc">The raw title of the video. Contains multilingual text (English, Korean) and often denotes series names like "SKZ CODE".</div>
+                    <div class="example-box">"Stray Kids "CREED" Video MAKING FILM"</div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <div class="feature-title-group">
+                            <span class="feature-name">description</span>
+                            <span class="badge string">String</span>
+                        </div>
+                    </div>
+                    <div class="desc">The text written in the description box of the video. Often contains credits, links, and copyright info.</div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <div class="feature-title-group">
+                            <span class="feature-name">tags</span>
+                            <span class="badge string">String (CSV)</span>
+                        </div>
+                    </div>
+                    <div class="desc">A comma-separated list of tags assigned to the video by the uploaders. Critical for NLP categorization.</div>
+                    <div class="example-box">"Stray Kids, bangchan challenge, changbin tiktok"</div>
+                </div>
+            </div>
+
+            <!-- TABLE: SKZ_STATS -->
+            <div id="stats" class="feature-section">
+                <div class="section-header">
+                    <h2>skz_stats</h2>
+                    <p>Time-series performance metrics. Contains multiple records per video_id, updated daily.</p>
+                </div>
+
+                <div class="card pk-card">
+                    <div class="card-header">
+                        <div class="feature-title-group">
+                            <span class="feature-name">video_id</span>
+                            <span class="badge string">String (FK)</span>
+                        </div>
+                    </div>
+                    <div class="desc">Foreign key linking back to skz_snippets.</div>
+                </div>
+
+                <div class="card pk-card">
+                    <div class="card-header">
+                        <div class="feature-title-group">
+                            <span class="feature-name">scraped_at</span>
+                            <span class="badge datetime">Timestamp (TZ)</span>
+                        </div>
+                    </div>
+                    <div class="desc">The exact timestamp when the metric snapshot was taken. Forms a composite primary key alongside video_id.</div>
+                    <div class="example-box">"2026-04-27 04:55:27.741242+07"</div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="feature-title-group">
+                            <span class="feature-name">view_count</span>
+                            <span class="badge numeric">Integer</span>
+                        </div>
+                    </div>
+                    <div class="desc">Total cumulative views the video had at the moment of scraping. Stored as a string in raw JSON but must be cast to Integer.</div>
+                    <div class="example-box">575036</div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="feature-title-group">
+                            <span class="feature-name">like_count</span>
+                            <span class="badge numeric">Integer</span>
+                        </div>
+                    </div>
+                    <div class="desc">Total cumulative likes the video had at the moment of scraping.</div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <div class="feature-title-group">
+                            <span class="feature-name">comment_count</span>
+                            <span class="badge numeric">Integer</span>
+                        </div>
+                    </div>
+                    <div class="desc">Total cumulative comments the video had at the moment of scraping.</div>
+                </div>
+            </div>
+
+            <!-- TABLE: SKZ_TOP_COMMENTS -->
+            <div id="comments" class="feature-section">
+                <div class="section-header">
+                    <h2>skz_top_comments</h2>
+                    <p>Granular fan sentiment data. Captures the top 50 comments per video, updated daily.</p>
+                </div>
+
+                <div class="card pk-card">
+                    <div class="card-header">
+                        <div class="feature-title-group">
+                            <span class="feature-name">comment_id</span>
+                            <span class="badge string">String (PK)</span>
+                        </div>
+                    </div>
+                    <div class="desc">Unique identifier for the comment assigned by YouTube.</div>
+                    <div class="example-box">"UgxTVDp93iucwW-UD3x4AaABAg"</div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="feature-title-group">
+                            <span class="feature-name">text</span>
+                            <span class="badge string">String (Multilingual)</span>
+                        </div>
+                    </div>
+                    <div class="desc">The actual text of the comment. Contains raw emojis, line breaks, and mixed languages. Requires NLP processing.</div>
+                    <div class="example-box">"“i think i was born for flowers”
+jeongin you ARE the flower 🌼 🤍"</div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <div class="feature-title-group">
+                            <span class="feature-name">like_count</span>
+                            <span class="badge numeric">Integer</span>
+                        </div>
+                    </div>
+                    <div class="desc">Number of likes the specific comment has received from other users. Useful for weighting sentiment scores.</div>
+                    <div class="example-box">1084</div>
+                </div>
+            </div>
+
+            <!-- TABLE: SKZ_TRANSCRIPTS -->
+            <div id="transcripts" class="feature-section">
+                <div class="section-header">
+                    <h2>skz_transcripts</h2>
+                    <p>Full spoken dialogue and auto-generated captions for deep textual analysis.</p>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <div class="feature-title-group">
+                            <span class="feature-name">transcript</span>
+                            <span class="badge string">String (Large Text)</span>
+                        </div>
+                    </div>
+                    <div class="desc">The complete string of captions pulled from the video. Used for keyword extraction (TF-IDF) to correlate spoken topics with engagement spikes.</div>
+                </div>
+            </div>
+
+            <!-- TABLE: ENGINEERED FEATURES -->
+            <div id="engineered" class="feature-section">
+                <div class="section-header">
+                    <h2>Engineered Features ✦</h2>
+                    <p>Derived metrics calculated via Python/Pandas to solve the "Time-Series & Publication Date" problem and enable advanced visualization in Power BI.</p>
+                </div>
+
+                <div class="card engineered-card">
+                    <div class="card-header">
+                        <div class="feature-title-group">
+                            <span class="feature-name">video_age_days</span>
+                            <span class="badge engineered">Calculated: Float</span>
+                        </div>
+                    </div>
+                    <div class="desc">The exact age of the video at the time of the latest data pull. Used to create cohorts (New Release vs. Catalog).</div>
+                    <div class="example-box formula">Calculation: ( MAX(stats.scraped_at) - snippets.published_at ).days</div>
+                </div>
+
+                <div class="card engineered-card">
+                    <div class="card-header">
+                        <div class="feature-title-group">
+                            <span class="feature-name">content_pillar</span>
+                            <span class="badge engineered">Calculated: String</span>
+                        </div>
+                    </div>
+                    <div class="desc">Custom categorization mapping derived via Regex from the `title` and `tags` columns. Fills the gap left by YouTube's generic 'category_id'.</div>
+                    <div class="metadata-grid">
+                        <span class="metadata-label">Categories:</span>
+                        <span>'Music Video', 'SKZ CODE', 'Vlog', 'Teaser', 'Dance Practice', 'Other'</span>
+                    </div>
+                    <div class="example-box formula">Logic: IF title CONTAINS "SKZ CODE" THEN "SKZ CODE", ELSE IF...</div>
+                </div>
+
+                <div class="card engineered-card">
+                    <div class="card-header">
+                        <div class="feature-title-group">
+                            <span class="feature-name">lifetime_engagement_rate</span>
+                            <span class="badge engineered">Calculated: Float</span>
+                        </div>
+                    </div>
+                    <div class="desc">The overall historical quality of the video up to the present day. Normalizes views across different videos to level the playing field.</div>
+                    <div class="example-box formula">Calculation: (Latest Likes + Latest Comments) / Latest Views</div>
+                </div>
+
+                <div class="card engineered-card">
+                    <div class="card-header">
+                        <div class="feature-title-group">
+                            <span class="feature-name">marginal_engagement_rate</span>
+                            <span class="badge engineered">Calculated: Float</span>
+                        </div>
+                    </div>
+                    <div class="desc">The "Current Momentum". Calculates the engagement rate explicitly on the NEW views generated during the 30 day scraping window. Crucial for identifying older videos that are trending again.</div>
+                    <div class="example-box formula">Calculation: ((Latest Likes - Earliest Likes) + (Latest Comments - Earliest Comments)) / (Latest Views - Earliest Views)</div>
+                </div>
+
+                <div class="card engineered-card">
+                    <div class="card-header">
+                        <div class="feature-title-group">
+                            <span class="feature-name">daily_view_velocity</span>
+                            <span class="badge engineered">Calculated: Float</span>
+                        </div>
+                    </div>
+                    <div class="desc">The average number of views the video is actively gaining per day right now.</div>
+                    <div class="example-box formula">Calculation: (Latest Views - Earliest Views) / (Days between Earliest and Latest Scrape)</div>
+                </div>
+
+                <div class="card engineered-card">
+                    <div class="card-header">
+                        <div class="feature-title-group">
+                            <span class="feature-name">positive_sentiment_percentage</span>
+                            <span class="badge engineered">Calculated: Float (%)</span>
+                        </div>
+                    </div>
+                    <div class="desc">The aggregate sentiment score per video. Generated by passing the `skz_top_comments` text through the <code>twitter-xlm-roberta-base-sentiment</code> transformer model that has been fine-tuned.</div>
+                    <div class="example-box formula">Calculation: COUNT(Positive Comments) / COUNT(Total Comments) per video_id</div>
+                </div>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        function switchTab(tabId, element) {
+            // Remove active classes
+            document.querySelectorAll('.sidebar li').forEach(li => li.classList.remove('active'));
+            document.querySelectorAll('.feature-section').forEach(sec => sec.classList.remove('active'));
+            
+            // Add active class to clicked tab and corresponding section
+            element.classList.add('active');
+            document.getElementById(tabId).classList.add('active');
+            
+            // Reset search
+            document.getElementById('searchInput').value = '';
+            document.getElementById('noResults').style.display = 'none';
+            document.querySelectorAll('.card').forEach(card => card.style.display = 'block');
+        }
+
+        function handleSearch() {
+            const query = document.getElementById('searchInput').value.toLowerCase();
+            const allCards = document.querySelectorAll('.card');
+            let hasVisibleCards = false;
+
+            if (query === '') {
+                // If search is cleared, revert to normal tab view behavior
+                const activeTabId = document.querySelector('.sidebar li.active').getAttribute('onclick').match(/'([^']+)'/)[1];
+                document.querySelectorAll('.feature-section').forEach(sec => {
+                    if(sec.id === activeTabId) {
+                        sec.classList.add('active');
+                    } else {
+                        sec.classList.remove('active');
+                    }
+                });
+                allCards.forEach(card => card.style.display = 'block');
+                document.getElementById('noResults').style.display = 'none';
+                return;
+            }
+
+            // Global search mode: show all sections, filter cards
+            document.querySelectorAll('.feature-section').forEach(sec => sec.classList.add('active'));
+            
+            allCards.forEach(card => {
+                const text = card.innerText.toLowerCase();
+                if (text.includes(query)) {
+                    card.style.display = 'block';
+                    hasVisibleCards = true;
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+
+            // Hide section headers if all cards inside are hidden
+            document.querySelectorAll('.feature-section').forEach(sec => {
+                const visibleCards = sec.querySelectorAll('.card[style="display: block;"]');
+                const header = sec.querySelector('.section-header');
+                if(header) {
+                    header.style.display = visibleCards.length > 0 ? 'block' : 'none';
+                }
+            });
+
+            document.getElementById('noResults').style.display = hasVisibleCards ? 'none' : 'block';
+        }
+    </script>
+</body>
+</html>
