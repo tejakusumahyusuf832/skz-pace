@@ -94,7 +94,7 @@ def perform_sentiment_analysis(
     db_uri_key: str = typer.Option(
         "DB_URI_KEY", help="URI key of the database containing your data."
     ),
-    output_path: Path = INTERIM_DATA_DIR / "df_sentiment_final_result.parquet",
+    output_path: Path = INTERIM_DATA_DIR / "video_sentiment_result.parquet",
     return_data: bool = False,
 ):
     DB_URI = os.environ.get(db_uri_key, "")
@@ -103,8 +103,8 @@ def perform_sentiment_analysis(
 
     logger.info("Fetching comment data from database...")
     try:
-        df_lazy = pl.read_database_uri(query, DB_URI).lazy()
-        df_lazy.sink_parquet(INTERIM_DATA_DIR / "df_top_comments_30_days.parquet")
+        lazy_df = pl.read_database_uri(query, DB_URI).lazy()
+        lazy_df.sink_parquet(INTERIM_DATA_DIR / "top_comments_30_days.parquet")
         logger.success("Comment data fetched successfully.")
     except Exception as e:
         logger.error(f"Failed to fetch comment data from database: {e}")
@@ -113,7 +113,7 @@ def perform_sentiment_analysis(
     logger.info("Starting to detect languages...")
 
     # Label every comment with its language
-    df_lang_detected = df_lazy.with_columns(
+    lang_detected_df = lazy_df.with_columns(
         pl.col("text")
         .fill_null("")
         .str.replace_all("\n", " ", literal=True)
@@ -121,11 +121,11 @@ def perform_sentiment_analysis(
         .alias("language")
     )
 
-    df_lang_detected.sink_parquet(INTERIM_DATA_DIR / "df_top_comment_lang_detected.parquet")
+    lang_detected_df.sink_parquet(INTERIM_DATA_DIR / "comment_lang_detected.parquet")
 
     # Select only the languages that mainly appear 90% of the data
     df_selected_lang = (
-        df_lang_detected.select(pl.col("language").value_counts(sort=True))
+        lang_detected_df.select(pl.col("language").value_counts(sort=True))
         .unnest("language")
         .with_columns((pl.col("count") * 100 / pl.col("count").sum()).alias("lang_percentage"))
         .with_columns(pl.col("lang_percentage").cum_sum().alias("cum_sum"))
@@ -149,18 +149,18 @@ def perform_sentiment_analysis(
     chosen_langs = hf_langs | set(selected_lang_list)
     chosen_langs_list = list(chosen_langs)
 
-    df_selected_labels = df_lang_detected.filter(pl.col("language").is_in(chosen_langs_list))
+    df_selected_labels = lang_detected_df.filter(pl.col("language").is_in(chosen_langs_list))
 
-    df_sentiment_result = df_selected_labels.with_columns(
+    comment_sentiment_df = df_selected_labels.with_columns(
         pl.col("text")
         .map_batches(get_sentiment_labels, return_dtype=pl.String)
         .alias("sentiment_label")
     )
 
-    df_sentiment_result.sink_parquet(INTERIM_DATA_DIR / "df_sentiment_result.parquet")
+    comment_sentiment_df.sink_parquet(INTERIM_DATA_DIR / "comment_sentiment.parquet")
 
-    df_sentiment_final_result = (
-        df_sentiment_result.select(
+    video_sentiment_result_df = (
+        comment_sentiment_df.select(
             pl.col("video_id", "comment_id"),
             pl.when(pl.col("sentiment_label") == "positive")
             .then(pl.lit(1))
@@ -173,9 +173,9 @@ def perform_sentiment_analysis(
     )
 
     if return_data:
-        return df_sentiment_final_result
+        return video_sentiment_result_df
     else:
-        df_sentiment_final_result.sink_parquet(output_path)
+        video_sentiment_result_df.sink_parquet(output_path)
 
 
 if __name__ == "__main__":

@@ -253,8 +253,8 @@ def make_data(
     db_uri_key: str = typer.Option(
         "DB_URI_KEY", help="URI key of the database containing your data."
     ),
-    sentiment_result_path: Path = INTERIM_DATA_DIR / "df_sentiment_final_result.parquet",
-    output_path: Path = INTERIM_DATA_DIR / "dataset.parquet",
+    sentiment_result_path: Path = INTERIM_DATA_DIR / "video_sentiment_result.parquet",
+    output_path: Path = INTERIM_DATA_DIR / "video_performance.parquet",
     return_data: bool = False,
 ):
     # Get the sentiment analysis result
