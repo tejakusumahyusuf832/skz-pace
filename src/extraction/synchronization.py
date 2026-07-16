@@ -1,3 +1,5 @@
+"""Manage synchronization and routing of extraction data to the appropriate storage backend."""
+
 import os
 from typing import Any
 
@@ -11,6 +13,22 @@ def prepare_authentication(
     gcp_credentials_key: str = "GCP_CREDENTIALS",
     drive_folder_id_key: str = "DRIVE_FOLDER_ID",
 ) -> Any:
+    """Initialize and return the authentication client for the selected storage backend.
+
+    Args:
+        storage_mode (str, optional): The target storage system, either "DATABASE" or "GDRIVE".
+            Defaults to "GDRIVE".
+        db_uri_key (str, optional): The environment variable key for the database URI.
+            Defaults to "DB_URI".
+        gcp_credentials_key (str, optional): The environment variable key for GCP credentials.
+            Defaults to "GCP_CREDENTIALS".
+        drive_folder_id_key (str, optional): The environment variable key for the Drive folder ID.
+            Defaults to "DRIVE_FOLDER_ID".
+
+    Returns:
+        Any: The SQLAlchemy engine instance if "DATABASE", or a tuple containing the
+        Google Drive service instance and folder ID if "GDRIVE". Returns None on failure.
+    """
     if storage_mode == "DATABASE":
         # --- LOCAL IMPORTS ---
         from src.load.db.connection import is_connected_to_db
@@ -36,6 +54,24 @@ def get_old_processed_ids(
     drive_service: Any = None,
     folder_id: str | None = None,
 ) -> list[str] | list:
+    """Retrieve the list of previously processed video IDs from the designated storage.
+
+    Args:
+        storage_mode (str, optional): The target storage system, either "DATABASE" or "GDRIVE".
+            Defaults to "GDRIVE".
+        db_engine (Any, optional): The active SQLAlchemy database engine. Required if
+            storage_mode is "DATABASE". Defaults to None.
+        drive_service (Any, optional): The authenticated Google Drive service instance.
+            Required if storage_mode is "GDRIVE". Defaults to None.
+        folder_id (str | None, optional): The Google Drive folder ID. Required if
+            storage_mode is "GDRIVE". Defaults to None.
+
+    Returns:
+        list[str]: A list of video IDs that have already been processed.
+
+    Raises:
+        ValueError: If the required connection objects for the selected storage mode are not provided.
+    """
     if storage_mode == "DATABASE":
         if db_engine is None:
             raise ValueError("db_engine is required when storage_mode is 'DATABASE'")
@@ -79,7 +115,25 @@ def store_raw_metadata(
     db_engine: Any = None,
     drive_service: Any = None,
     folder_id: str | None = None,
-):
+) -> None:
+    """Route and store the extracted raw metadata batches to the appropriate storage backend.
+
+    Args:
+        fetched_snippets_and_stats (list[dict]): The batch of fetched video snippets and statistics.
+        fetched_processed_vids (list[dict]): The batch of newly identified processed video records.
+        fetched_top_comments (list[dict]): The batch of fetched top comments.
+        storage_mode (str): The target storage system, either "DATABASE" or "GDRIVE".
+        db_engine (Any, optional): The active SQLAlchemy database engine. Required if
+            storage_mode is "DATABASE". Defaults to None.
+        drive_service (Any, optional): The authenticated Google Drive service instance.
+            Required if storage_mode is "GDRIVE". Defaults to None.
+        folder_id (str | None, optional): The Google Drive folder ID. Required if
+            storage_mode is "GDRIVE". Defaults to None.
+
+    Raises:
+        ValueError: If an unsupported storage mode is provided, or if the necessary
+            connection objects for the chosen mode are missing.
+    """
     if storage_mode == "DATABASE":
         if db_engine is None:
             raise ValueError("db_engine is required when storage_mode is 'DATABASE'")

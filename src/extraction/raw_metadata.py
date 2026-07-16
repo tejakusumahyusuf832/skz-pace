@@ -1,8 +1,4 @@
-"""Extract raw YouTube API metadata and load it into a cloud database.
-
-Handles batched API requests with exponential backoff for rate limits,
-fetching snippets, statistics, and top comments for specified channel playlists.
-"""
+"""Extract raw video metadata, statistics, and top comments from the YouTube Data API."""
 
 from datetime import datetime, timezone
 from enum import Enum
@@ -24,6 +20,8 @@ app = typer.Typer()
 
 
 class StorageOptions(str, Enum):
+    """Enumerate the supported storage backends for extracted metadata."""
+
     DATABASE = "DATABASE"
     GDRIVE = "GDRIVE"
 
@@ -32,11 +30,10 @@ def get_youtube_client(api_key: str) -> object:
     """Initialize and return the Google API client for YouTube v3.
 
     Args:
-        api_key (str, optional): The environment variable key containing the
-            Google Cloud API Key. Defaults to "YOUTUBE_API_KEY".
+        api_key (str): The environment variable key containing the Google Cloud API Key.
 
     Returns:
-        object: An initialized googleapiclient.discovery.Resource instance.
+        Any: An initialized googleapiclient.discovery.Resource instance.
 
     Raises:
         ValueError: If the specified environment variable is not found.
@@ -52,11 +49,11 @@ def get_all_video_ids(youtube, playlist_id: str) -> list[str]:
     """Fetch all video IDs contained within a specified YouTube playlist.
 
     Args:
-        youtube (googleapiclient.discovery.Resource): The initialized YouTube API client.
+        youtube (Any): The initialized YouTube API client.
         playlist_id (str): The ID of the playlist to query.
 
     Returns:
-        List[str]: A list of video IDs extracted from the playlist.
+        list[str]: A list of video IDs extracted from the playlist.
     """
     video_ids = []
     next_page_token = None
@@ -91,7 +88,7 @@ def is_server_error(exception) -> bool:
         exception (Exception): The exception raised during an API call.
 
     Returns:
-        bool: True if the exception is an HttpError with a status code >= 500.
+        bool: True if the exception is an HttpError with a status code >= 500, otherwise False.
     """
     if isinstance(exception, HttpError):
         return exception.resp.status >= 500
@@ -108,8 +105,8 @@ def get_snippets_and_stats(youtube, batch_ids: list[str]) -> dict:
     """Fetch snippet and statistics data for a batch of YouTube videos.
 
     Args:
-        youtube (object): The initialized YouTube API client.
-        batch_ids (List[str]): A list of video IDs to query (max 50).
+        youtube (Any): The initialized YouTube API client.
+        batch_ids (list[str]): A list of video IDs to query (maximum of 50).
 
     Returns:
         dict: The raw JSON response payload from the YouTube API.
@@ -127,7 +124,7 @@ def get_top_comments(youtube, video_id: str) -> dict:
     """Fetch the top relevant comments for a single YouTube video.
 
     Args:
-        youtube (object): The initialized YouTube API client.
+        youtube (Any): The initialized YouTube API client.
         video_id (str): The target video ID.
 
     Returns:
@@ -152,12 +149,12 @@ def get_new_processed_vids(
     """Filter newly discovered videos against previously processed database IDs.
 
     Args:
-        to_processed_vids (dict): Dictionary mapping video IDs to their formats.
-        old_processed_ids (List[str]): List of video IDs already existing in the database.
+        to_processed_vids (dict): Dictionary mapping current video IDs to their formats.
+        old_processed_ids (list[str]): List of video IDs already existing in the database.
         scraped_at (str): ISO formatted timestamp of the current scraping run.
 
     Returns:
-        List[dict]: Formatted records of new videos ready for database insertion.
+        list[dict]: Formatted records of new videos ready for database insertion.
     """
     new_processed_vids = []
 
@@ -190,12 +187,15 @@ def main(
         "UC9rMiEjNaCSsebs31MRDCRA", help="The channel ID of the specified YouTube channel"
     ),
 ) -> None:
-    """Execute the main ETL extraction pipeline for YouTube metadata.
+    """Execute the main extraction pipeline to fetch and store YouTube metadata.
 
     Args:
-        uri_key (str, optional): The database connection URI key.
-        api_key (str, optional): The YouTube API developer key.
-        channel_id (str, optional): The target YouTube channel ID.
+        storage_mode (str, optional): The target storage system for raw data.
+        db_uri_key (str, optional): The environment variable key for the database URI.
+        gcp_credentials_key (str, optional): The environment variable key for GCP credentials.
+        folder_id_key (str, optional): The environment variable key for the Google Drive folder ID.
+        api_key (str, optional): The environment variable key for the YouTube API developer key.
+        channel_id (str, optional): The target YouTube channel ID to extract data from.
     """
     # Prepare the synchronization process
     if storage_mode == "DATABASE":
