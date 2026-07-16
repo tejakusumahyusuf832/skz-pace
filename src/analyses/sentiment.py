@@ -1,3 +1,5 @@
+"""Perform language detection and sentiment analysis on YouTube top comments."""
+
 import os
 from pathlib import Path
 
@@ -29,6 +31,14 @@ query = """
 
 
 def detect_language(text_series: pl.Series) -> pl.Series:
+    """Detect the primary language of each text entry in a series.
+
+    Args:
+        text_series (pl.Series): A Polars Series containing the string text to analyze.
+
+    Returns:
+        pl.Series: A Polars Series containing the detected language codes.
+    """
     HF_TOKEN = os.environ.get("HF_TOKEN", "")
     if not HF_TOKEN:
         logger.error("HF_TOKEN not found.")
@@ -50,6 +60,14 @@ def detect_language(text_series: pl.Series) -> pl.Series:
 
 
 def get_sentiment_labels(text_series: pl.Series) -> pl.Series:
+    """Apply a pre-trained sequence classification model to predict sentiment labels.
+
+    Args:
+        text_series (pl.Series): A Polars Series containing the string text to analyze.
+
+    Returns:
+        pl.Series: A Polars Series containing the predicted sentiment string labels.
+    """
     MODEL_ID = "cardiffnlp/twitter-xlm-roberta-base-sentiment"
     MODEL_PATH = MODELS_DIR / "best-kpop-sentiment-model"
 
@@ -96,7 +114,18 @@ def perform_sentiment_analysis(
     ),
     output_path: Path = INTERIM_DATA_DIR / "video_sentiment_result.parquet",
     return_data: bool = False,
-):
+) -> pl.LazyFrame | None:
+    """Execute the end-to-end sentiment analysis pipeline via the command line interface.
+
+    Args:
+        db_uri_key (str, optional): The environment variable key mapped to the database connection URI.
+        output_path (Path, optional): The file path where the resulting parquet file should be saved.
+        return_data (bool, optional): Determine whether to return the DataFrame directly
+            instead of writing it to disk. Defaults to False.
+
+    Returns:
+        pl.LazyFrame | None: The resulting sentiment LazyFrame if return_data is True, otherwise None.
+    """
     DB_URI = os.environ.get(db_uri_key, "")
     if not DB_URI:
         logger.error("Database URI not found.")
@@ -159,7 +188,7 @@ def perform_sentiment_analysis(
 
     comment_sentiment_df.sink_parquet(INTERIM_DATA_DIR / "comment_sentiment.parquet")
 
-    video_sentiment_result_df = (
+    video_sentiment_result_lf = (
         comment_sentiment_df.select(
             pl.col("video_id", "comment_id"),
             pl.when(pl.col("sentiment_label") == "positive")
@@ -173,9 +202,9 @@ def perform_sentiment_analysis(
     )
 
     if return_data:
-        return video_sentiment_result_df
+        return video_sentiment_result_lf
     else:
-        video_sentiment_result_df.sink_parquet(output_path)
+        video_sentiment_result_lf.sink_parquet(output_path)
 
 
 if __name__ == "__main__":

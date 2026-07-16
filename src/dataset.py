@@ -1,3 +1,5 @@
+"""Extract raw data from the database and engineer features to construct the primary analytical dataset."""
+
 import os
 from pathlib import Path
 import re
@@ -81,7 +83,15 @@ get_long_form_cat = (
 )
 
 
-def categorize_long_forms(title):
+def categorize_long_forms(title: str) -> str:
+    """Categorize long-form video titles into predefined content pillars using regex.
+
+    Args:
+        title (str): The video title to categorize.
+
+    Returns:
+        str: The identified category label.
+    """
     if re.search(r"(?i)SKZ-TALKER GO!", title):
         return "SKZ-TALKER GO!"
     elif re.search(r"(?i)SKZ-TALKER|슼토커|슼즈토커", title):
@@ -108,7 +118,15 @@ def categorize_long_forms(title):
         return "Other/Music Videos"
 
 
-def categorize_shorts(title):
+def categorize_shorts(title: str) -> str:
+    """Categorize YouTube Shorts titles into predefined content pillars using regex.
+
+    Args:
+        title (str): The shorts title to categorize.
+
+    Returns:
+        str: The identified category label.
+    """
     if re.search(r"(?i)Challenge\s+w/|챌린지\s+w/", title):
         return "Collab Challenge"
 
@@ -164,7 +182,15 @@ def categorize_shorts(title):
         return "General Promo / Other Shorts"
 
 
-def categorize_lives(title):
+def categorize_lives(title: str) -> str:
+    """Categorize live stream video titles into predefined content pillars using regex.
+
+    Args:
+        title (str): The live stream title to categorize.
+
+    Returns:
+        str: The identified category label.
+    """
     if re.search(r"찬이의.*방", title):
         return "Chan's Room"
 
@@ -256,7 +282,19 @@ def make_data(
     sentiment_result_path: Path = INTERIM_DATA_DIR / "video_sentiment_result.parquet",
     output_path: Path = INTERIM_DATA_DIR / "video_performance.parquet",
     return_data: bool = False,
-):
+) -> pl.LazyFrame | None:
+    """Execute the feature engineering pipeline to generate the final analytical dataset.
+
+    Args:
+        db_uri_key (str, optional): The environment variable key mapped to the database connection URI.
+        sentiment_result_path (Path, optional): The file path where the sentiment analysis output is located.
+        output_path (Path, optional): The file path where the resulting parquet file should be saved.
+        return_data (bool, optional): Determine whether to return the DataFrame directly
+            instead of writing it to disk. Defaults to False.
+
+    Returns:
+        pl.LazyFrame | None: The fully engineered LazyFrame if return_data is True, otherwise None.
+    """
     # Get the sentiment analysis result
     if sentiment_result_path.exists():
         df_sentiment_result = pl.scan_parquet(sentiment_result_path)
