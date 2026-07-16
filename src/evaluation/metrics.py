@@ -1,7 +1,19 @@
+"""Calculate and format evaluation metrics for model training performance."""
+
 import numpy as np
 
 
-def compute_metrics(eval_pred):
+def compute_metrics(eval_pred) -> dict:
+    """Calculate accuracy, F1 scores, and a confusion matrix from model predictions.
+
+    Args:
+        eval_pred (tuple): A tuple containing two numpy arrays: the raw model
+            logits and the true integer labels.
+
+    Returns:
+        dict: A dictionary containing the macro-averaged F1 score and the
+        weighted-averaged F1 score.
+    """
     logits, labels = eval_pred
     predictions = np.argmax(logits, axis=-1)
     accuracy = np.mean(predictions == labels)

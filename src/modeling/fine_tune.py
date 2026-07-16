@@ -1,3 +1,5 @@
+"""Execute grid search to fine-tune a pre-trained transformer model for sentiment classification."""
+
 import itertools
 import os
 
@@ -17,7 +19,13 @@ from src.evaluation.metrics import compute_metrics
 MODEL_ID = "cardiffnlp/twitter-xlm-roberta-base-sentiment"
 
 
-def fine_tune(sample_path=INTERIM_DATA_DIR / "df_true_sentiment_samples.parquet"):
+def fine_tune(sample_path=INTERIM_DATA_DIR / "df_true_sentiment_samples.parquet") -> None:
+    """Execute a grid search to fine-tune the sentiment classification model and save the best performer.
+
+    Args:
+        sample_path (Any, optional): The file path to the prepared Parquet dataset.
+            Defaults to INTERIM_DATA_DIR / "df_true_sentiment_samples.parquet".
+    """
     HF_TOKEN = os.environ.get("HF_TOKEN", "")
     if not HF_TOKEN:
         logger.error("Token not found.")
