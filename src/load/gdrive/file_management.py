@@ -1,3 +1,5 @@
+"""Manage file operations, downloads, and updates for Google Drive."""
+
 from datetime import datetime, timedelta, timezone
 import io
 import json
@@ -10,7 +12,16 @@ from loguru import logger
 
 
 def get_file_id_by_name(service: Any, filename: str, folder_id: str) -> str | None:
-    """Search for a file by name in a specific folder and return its ID."""
+    """Search for a file by name within a specific Google Drive folder and return its ID.
+
+    Args:
+        service (Any): The authenticated Google Drive API service instance.
+        filename (str): The exact name of the file to locate.
+        folder_id (str): The ID of the Google Drive folder to search within.
+
+    Returns:
+        str | None: The unique Google Drive file ID if found, otherwise None.
+    """
     query = f"name='{filename}' and '{folder_id}' in parents and trashed=false"
     results = (
         service.files()
@@ -23,6 +34,17 @@ def get_file_id_by_name(service: Any, filename: str, folder_id: str) -> str | No
 
 
 def should_keep_record(scraped_at_str, *, max_days=None, last_scraped_date=None):
+    """Determine if a scraped record should be retained based on its timestamp.
+
+    Args:
+        scraped_at_str (str): The ISO-formatted timestamp string indicating when the record was scraped.
+        max_days (int, optional): The maximum allowed age in days for the record. Defaults to None.
+        last_scraped_date (datetime, optional): A specific datetime threshold; records scraped
+            strictly after this date are kept. Defaults to None.
+
+    Returns:
+        bool: True if the record falls within the acceptable time window, False otherwise.
+    """
     dt = datetime.fromisoformat(scraped_at_str)
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
@@ -51,6 +73,20 @@ def load_jsonl_file(
     desired_keys: None | str | list = None,
     filter_date_scraped=None,
 ) -> list:
+    """Download and parse a JSONL file from Google Drive based on specified filters.
+
+    Args:
+        service (Any): The authenticated Google Drive API service instance.
+        filename (str): The name of the target JSONL file on Google Drive.
+        folder_id (str): The ID of the Google Drive folder containing the file.
+        desired_keys (None | str | list, optional): Keys to extract from each JSON record.
+            If a string, extracts a single value; if a list, extracts a subset dictionary;
+            if None, retains the full record. Defaults to None.
+        filter_date_scraped (datetime, optional): A datetime threshold to filter records. Defaults to None.
+
+    Returns:
+        list: A list containing the parsed and filtered records.
+    """
     file_id = get_file_id_by_name(service, filename, folder_id)
 
     if not file_id:
@@ -103,7 +139,16 @@ def load_jsonl_file(
 
 def filter_and_process_jsonl(
     old_local_path, new_local_path, new_data, should_filter: bool, max_days=None
-):
+) -> None:
+    """Filter existing local JSONL records and append new data into a new file.
+
+    Args:
+        old_local_path (str): The file path to the existing downloaded JSONL data.
+        new_local_path (str): The file path where the filtered and combined data will be written.
+        new_data (list): A list of new dictionary records to append.
+        should_filter (bool): Flag indicating whether to apply time-based retention filtering to old records.
+        max_days (int, optional): The maximum record age in days to retain if filtering is enabled. Defaults to None.
+    """
     with open(new_local_path, "w") as out_f:
         if os.path.exists(old_local_path):
             with open(old_local_path, "r") as in_f:
@@ -126,7 +171,16 @@ def filter_and_process_jsonl(
 
 def update_to_drive_jsonl(
     service: Any, folder_id: str, *, new_data: list, filename: str, max_days
-):
+) -> None:
+    """Update a specific JSONL file on Google Drive by merging existing data with new records.
+
+    Args:
+        service (Any): The authenticated Google Drive API service instance.
+        folder_id (str): The ID of the Google Drive folder containing the target file.
+        new_data (list): A list of new dictionary records to append to the existing file.
+        filename (str): The name of the target JSONL file to update.
+        max_days (int): The maximum age in days to retain historical records during the update.
+    """
     file_id = get_file_id_by_name(service, filename, folder_id)
     should_filter = True if filename != "processed_vids.jsonl" else False
 

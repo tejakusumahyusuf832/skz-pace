@@ -1,8 +1,4 @@
-"""Database storage operations for raw and processed analytics data.
-
-Provides utilities for bulk data insertion, handling JSON serialization
-for complex objects, and pruning old data to maintain storage efficiency.
-"""
+"""Handle database insertion operations and routine raw data pruning."""
 
 import json
 from typing import Any, List
@@ -12,11 +8,18 @@ from sqlalchemy import text
 
 
 def append_to_db(data_list: List[dict], table_name: str, engine: Any) -> None:
+    """Append a collection of records to a designated database table.
+
+    Args:
+        data_list (List[dict]): A list of dictionaries representing the rows to insert.
+        table_name (str): The name of the target database table.
+        engine (Any): The SQLAlchemy engine instance connected to the target database.
+    """
     if not data_list:
         logger.info(f"No records provided for {table_name}. Skipping DB load.")
         return
 
-    # Serialize nested structures for database compatibility
+    # Serialize nested structures to strings for relational database compatibility
     for row in data_list:
         for key, value in row.items():
             if isinstance(value, dict) or isinstance(value, list):
@@ -38,6 +41,13 @@ def append_to_db(data_list: List[dict], table_name: str, engine: Any) -> None:
 
 
 def prune_old_raw_data(engine: Any, days_old: int = 7) -> None:
+    """Delete records older than a specified threshold from the raw data tables.
+
+    Args:
+        engine (Any): The SQLAlchemy engine instance connected to the raw database.
+        days_old (int, optional): The age threshold in days for determining which
+            records to delete. Defaults to 7.
+    """
     queries = {
         "snippets_and_stats": text(
             f"DELETE FROM snippets_and_stats WHERE scraped_at < NOW() - INTERVAL '{days_old} days'"
