@@ -1,8 +1,4 @@
-"""Retrieve, format, and load closed caption transcripts for video content.
-
-Fetches specific long-form video transcripts via an undocumented YouTube API
-and incorporates sleep jitter to prevent automated connection blocking.
-"""
+"""Extract and load YouTube video transcripts into a structured database schema."""
 
 import os
 import random
@@ -27,8 +23,8 @@ def fetch_video_transcript(video_id: str) -> str | None:
 
     Returns:
         str | None: The concatenated full transcript text. Returns "FAILED_FETCH" if
-            an unexpected error occurs indicating the append should be skipped, or
-            None if the transcript is definitively unavailable or disabled.
+        an unexpected error occurs indicating the append should be skipped, or
+        None if the transcript is definitively unavailable or disabled.
     """
     try:
         time.sleep(random.uniform(57.0, 67.3))
@@ -58,9 +54,8 @@ def main(
     """Execute the extraction pipeline for video transcripts directly to the target database.
 
     Args:
-        limit (int, optional): Restrict the number of transcripts processed per run.
-            Defaults to 40.
-        uri_key (str, optional): The database connection URI key.
+        limit (int, optional): Restrict the number of transcripts processed per run. Defaults to 40.
+        uri_key (str, optional): The environment variable key mapped to the database connection URI.
     """
     if limit > 40:
         logger.debug("Cannot fetch more than 40 transcripts.")

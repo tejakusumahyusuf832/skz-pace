@@ -1,8 +1,4 @@
-"""Transform and load raw YouTube snippet payloads into structured databases.
-
-Pulls unprocessed JSON blobs from the cloud data lake, flattens the metadata
-into tabular records, and performs upserts into the transformed schema.
-"""
+"""Extract, transform, and load raw video snippet metadata into a structured database schema."""
 
 from enum import Enum
 import os
@@ -18,6 +14,8 @@ app = typer.Typer()
 
 
 class StorageOptions(str, Enum):
+    """Enumerate the supported storage backends for initial metadata retrieval."""
+
     DATABASE = "DATABASE"
     GDRIVE = "GDRIVE"
 
@@ -30,6 +28,26 @@ def get_new_snippets(
     service: Any = None,
     folder_id: str = "FOLDER_ID",
 ) -> tuple:
+    """Retrieve unprocessed snippet data and format mappings from the specified storage backend.
+
+    Args:
+        storage_mode (str): The target storage system, either "DATABASE" or "GDRIVE".
+        last_scraped_at (str | None): The latest timestamp present in the destination database,
+            used to filter for only new records.
+        engine (Any, optional): The active SQLAlchemy database engine connected to the raw data.
+            Required if storage_mode is "DATABASE". Defaults to None.
+        service (Any, optional): The authenticated Google Drive service instance.
+            Required if storage_mode is "GDRIVE". Defaults to None.
+        folder_id (str, optional): The Google Drive folder ID containing the raw data.
+            Required if storage_mode is "GDRIVE". Defaults to "FOLDER_ID".
+
+    Returns:
+        tuple: A two-element tuple containing a list of raw snippet records and a dictionary
+        mapping video IDs to their respective content formats.
+
+    Raises:
+        ValueError: If the required connection objects for the selected storage mode are missing.
+    """
     if storage_mode == "DATABASE":
         if engine is None:
             raise ValueError("engine is required when storage_mode is 'DATABASE'")
@@ -77,11 +95,11 @@ def get_new_snippets(
 
 
 def upsert_snippets(engine: Any, data_list: list) -> None:
-    """Insert new video snippets or update existing ones on primary key conflict.
+    """Insert new video snippets or update existing records on primary key conflict.
 
     Args:
+        engine (Any): The SQLAlchemy engine instance connected to the target database.
         data_list (list): A list of dictionaries containing flattened snippet data.
-        db_uri (str): The target database connection string.
     """
     if not data_list:
         logger.info("No snippet records to upsert. Skipping DB load.")
@@ -113,11 +131,11 @@ def process_snippets(raw_data: Sequence[Any], formats_map: dict) -> list:
     """Flatten raw API JSON payloads into standardized dictionary records.
 
     Args:
-        raw_data (Sequence[Any]): Database row proxy objects containing the raw JSON.
-        formats_map (dict): A mapping of video IDs to their respective formats.
+        raw_data (Sequence[Any]): A sequence of mapping objects containing the raw JSON payloads and scrape timestamps.
+        formats_map (dict): A mapping of video IDs to their respective formatting categories.
 
     Returns:
-        list: A list of dictionaries matching the 'skz_snippets' table schema.
+        list: A list of standardized dictionaries matching the 'skz_snippets' table schema.
     """
     snippet_records = []
 
@@ -163,6 +181,15 @@ def main(
         "DRIVE_FOLDER_ID", help="The .env key containing the Drive folder ID"
     ),
 ) -> None:
+    """Execute the snippet transformation pipeline via the command line interface.
+
+    Args:
+        storage_mode_start (str, optional): The raw storage source backend.
+        uri_key_start (str, optional): The environment variable key mapped to the raw database URI.
+        uri_key_end (str, optional): The environment variable key mapped to the destination database URI.
+        gcp_credentials_key (str, optional): The environment variable key mapped to GCP credentials.
+        folder_id_key (str, optional): The environment variable key mapped to the Google Drive folder ID.
+    """
     # Prepare authentication
     if storage_mode_start == "DATABASE":
         status, engine_start = is_connected_to_db(uri_key_start)

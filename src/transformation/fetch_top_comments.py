@@ -1,8 +1,4 @@
-"""Transform and load top-level YouTube comments into structured databases.
-
-Extracts unstructured text data from the raw data lake, isolates text bodies
-and authorship details, and formats them for downstream NLP and sentiment analysis.
-"""
+"""Extract, transform, and load raw YouTube top comments into a structured database schema."""
 
 from enum import Enum
 import os
@@ -20,6 +16,8 @@ app = typer.Typer()
 
 
 class StorageOptions(str, Enum):
+    """Enumerate the supported storage backends for initial comment data retrieval."""
+
     DATABASE = "DATABASE"
     GDRIVE = "GDRIVE"
 
@@ -31,7 +29,26 @@ def get_new_top_comments(
     engine: Any = None,
     service: Any = None,
     folder_id: str = "FOLDER_ID",
-):
+) -> list:
+    """Retrieve unprocessed top comments data from the specified storage backend.
+
+    Args:
+        storage_mode (str): The target storage system, either "DATABASE" or "GDRIVE".
+        last_scraped_at (str | None): The latest timestamp present in the destination database,
+            used to filter for only new records.
+        engine (Any, optional): The active SQLAlchemy database engine connected to the raw data.
+            Required if storage_mode is "DATABASE". Defaults to None.
+        service (Any, optional): The authenticated Google Drive service instance.
+            Required if storage_mode is "GDRIVE". Defaults to None.
+        folder_id (str, optional): The Google Drive folder ID containing the raw data.
+            Required if storage_mode is "GDRIVE". Defaults to "FOLDER_ID".
+
+    Returns:
+        list: A list of dictionaries containing raw top comments records.
+
+    Raises:
+        ValueError: If the required connection objects for the selected storage mode are missing.
+    """
     if storage_mode == "DATABASE":
         if engine is None:
             raise ValueError("engine is required when storage_mode is 'DATABASE'")
@@ -67,10 +84,10 @@ def process_comments(raw_data: Sequence[Any]) -> list:
     """Parse nested JSON comment threads into standardized dictionary objects.
 
     Args:
-        raw_data (Sequence[Any]): Row proxies containing the raw comments JSON from DB.
+        raw_data (Sequence[Any]): A sequence of mapping objects containing the raw comments JSON and scrape timestamps.
 
     Returns:
-        list: A flattened list of individual top-level comment details.
+        list: A flattened list of individual top-level comment details matching the database schema.
     """
     comment_data = []
 
@@ -113,6 +130,15 @@ def main(
         "DRIVE_FOLDER_ID", help="The .env key containing the Drive folder ID"
     ),
 ) -> None:
+    """Execute the top comments transformation pipeline via the command line interface.
+
+    Args:
+        storage_mode_start (str, optional): The raw storage source backend.
+        uri_key_start (str, optional): The environment variable key mapped to the raw database URI.
+        uri_key_end (str, optional): The environment variable key mapped to the destination database URI.
+        gcp_credentials_key (str, optional): The environment variable key mapped to GCP credentials.
+        folder_id_key (str, optional): The environment variable key mapped to the Google Drive folder ID.
+    """
     # Prepare authentication
     if storage_mode_start == "DATABASE":
         status, engine_start = is_connected_to_db(uri_key_start)

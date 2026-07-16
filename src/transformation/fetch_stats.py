@@ -1,8 +1,4 @@
-"""Transform and load raw YouTube performance statistics into structured databases.
-
-Extracts batched JSON responses from the cloud raw data lake, isolates daily
-time-series statistics (views, likes, comments), and writes them to the local schema.
-"""
+"""Extract, transform, and load raw video statistics into a structured database schema."""
 
 from enum import Enum
 import os
@@ -19,6 +15,8 @@ app = typer.Typer()
 
 
 class StorageOptions(str, Enum):
+    """Enumerate the supported storage backends for initial statistical data retrieval."""
+
     DATABASE = "DATABASE"
     GDRIVE = "GDRIVE"
 
@@ -30,7 +28,26 @@ def get_new_stats(
     engine: Any = None,
     service: Any = None,
     folder_id: str = "FOLDER_ID",
-):
+) -> list:
+    """Retrieve unprocessed statistical data from the specified storage backend.
+
+    Args:
+        storage_mode (str): The target storage system, either "DATABASE" or "GDRIVE".
+        last_scraped_at (str | None): The latest timestamp present in the destination database,
+            used to filter for only new records.
+        engine (Any, optional): The active SQLAlchemy database engine connected to the raw data.
+            Required if storage_mode is "DATABASE". Defaults to None.
+        service (Any, optional): The authenticated Google Drive service instance.
+            Required if storage_mode is "GDRIVE". Defaults to None.
+        folder_id (str, optional): The Google Drive folder ID containing the raw data.
+            Required if storage_mode is "GDRIVE". Defaults to "FOLDER_ID".
+
+    Returns:
+        list: A list of dictionaries containing raw statistical records.
+
+    Raises:
+        ValueError: If the required connection objects for the selected storage mode are missing.
+    """
     if storage_mode == "DATABASE":
         if engine is None:
             raise ValueError("engine is required when storage_mode is 'DATABASE'")
@@ -66,7 +83,7 @@ def process_stats(raw_data: Sequence[Any]) -> list:
     """Parse raw API statistics payloads into standardized flat dictionaries.
 
     Args:
-        raw_data (Sequence[Any]): Database mapping proxy containing nested API JSON.
+        raw_data (Sequence[Any]): A sequence of mapping objects containing the nested API JSON and scrape timestamps.
 
     Returns:
         list: A list of flattened statistic records ready for database insertion.
@@ -111,6 +128,15 @@ def main(
         "DRIVE_FOLDER_ID", help="The .env key containing the Drive folder ID"
     ),
 ) -> None:
+    """Execute the statistics transformation pipeline via the command line interface.
+
+    Args:
+        storage_mode_start (str, optional): The raw storage source backend.
+        uri_key_start (str, optional): The environment variable key mapped to the raw database URI.
+        uri_key_end (str, optional): The environment variable key mapped to the destination database URI.
+        gcp_credentials_key (str, optional): The environment variable key mapped to GCP credentials.
+        folder_id_key (str, optional): The environment variable key mapped to the Google Drive folder ID.
+    """
     # Prepare authentication
     if storage_mode_start == "DATABASE":
         status, engine_start = is_connected_to_db(uri_key_start)
