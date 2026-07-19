@@ -113,7 +113,7 @@ def main(
         if transcript_text is None:
             unavailable_transcript_count += 1
 
-    append_to_db(transcript_data, "skz_transcripts", db_uri)
+    append_to_db(transcript_data, "skz_transcripts", engine)
 
     if unavailable_transcript_count > 0:
         logger.debug(
