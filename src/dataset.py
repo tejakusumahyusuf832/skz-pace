@@ -52,37 +52,6 @@ query = """
 
 
 # This generates a new column to categorize contents
-get_long_form_cat = (
-    pl.when(pl.col("title").str.contains(r"(?i)SKZ-TALKER GO!"))
-    .then(pl.lit("SKZ-TALKER GO!"))
-    .when(pl.col("title").str.contains(r"(?i)SKZ-TALKER|슼토커|슼즈토커"))
-    .then(pl.lit("SKZ-TALKER"))
-    .when(pl.col("title").str.contains(r"\[SKZ CODE\]"))
-    .then(pl.lit("SKZ CODE"))
-    .when(pl.col("title").str.contains(r"(?i)Kids?'?s?\s*(Room|Song|Show)"))
-    .then(pl.lit("Kids Room Series"))
-    .when(pl.col("title").str.contains(r"\[SKZ VLOG\]|\[RACHA LOG\]|\[SKZ LOG\]"))
-    .then(pl.lit("Vlogs & Logs"))
-    .when(pl.col("title").str.contains(r"(?i)SKZ-RECORD|SKZ-PLAYER|\[SONG by\]"))
-    .then(pl.lit("SKZ-RECORD / PLAYER"))
-    .when(pl.col("title").str.contains(r"(?i)제 9구역|The 9th"))
-    .then(pl.lit("The 9th"))
-    .when(pl.col("title").str.contains(r"\[SPOT KIDS"))
-    .then(pl.lit("SPOT KIDS"))
-    .when(pl.col("title").str.contains(r"(?i)M/V Reaction"))
-    .then(pl.lit("M/V Reaction"))
-    .when(pl.col("title").str.contains(r"(?i)MAKING FILM"))
-    .then(pl.lit("Making Film"))
-    .when(
-        pl.col("title").str.contains(
-            r"(?i)Dance Practice|Performance Video|Guide Video|Lyric Visualizer"
-        )
-    )
-    .then(pl.lit("Dance & Performance"))
-    .otherwise(pl.lit("Other/Music Videos"))
-)
-
-
 def categorize_long_forms(title: str) -> str:
     """Categorize long-form video titles into predefined content pillars using regex.
 
